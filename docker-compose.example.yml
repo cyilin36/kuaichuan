@@ -39,10 +39,7 @@ services:
 
       # STUN 服务器（留空表示只尝试内网直连）
       STUN_URLS: "stun:stun.cloudflare.com:3478,stun:stun.l.google.com:19302"
-      # 可选 TURN，能明显提升打洞成功率
-      # TURN_URLS: turn:your-turn.example.com:3478
-      # TURN_USERNAME: user
-      # TURN_CREDENTIAL: pass
+      # 不需要 TURN：打洞失败会自动改用内存转发（不落盘）
 
       # 令牌签名密钥。留空则首次启动自动生成并保存到数据目录
       # TOKEN_SECRET: 换成一串随机字符

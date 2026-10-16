@@ -1,7 +1,10 @@
 /**
- * WebRTC 配置：STUN / TURN 服务器与传输参数。
+ * WebRTC 配置：STUN 服务器与传输参数。
  *
- * 需要携带某个分享的令牌才能取（避免 TURN 凭据被匿名白拿）。
+ * 不提供 TURN。打洞失败时会自动改用服务器内存转发（不落盘，见 realtime/relay-bridge.js），
+ * 对小规模自建场景来说，这比再维护一台 TURN 划算得多。
+ *
+ * 需要携带某个分享的令牌才能取，避免被匿名白拿。
  */
 
 import { sendJson } from '../respond.js';
@@ -19,12 +22,6 @@ export function registerRtcRoutes(router, { config, services }) {
 
     const iceServers = [];
     if (config.stunUrls.length > 0) iceServers.push({ urls: config.stunUrls });
-    if (config.turnUrls.length > 0) {
-      const entry = { urls: config.turnUrls };
-      if (config.turnUsername) entry.username = config.turnUsername;
-      if (config.turnCredential) entry.credential = config.turnCredential;
-      iceServers.push(entry);
-    }
 
     sendJson(res, 200, {
       iceServers,
