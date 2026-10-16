@@ -45,6 +45,7 @@ export function createRouter() {
 
   return {
     get: (p, h) => add('GET', p, h),
+    head: (p, h) => add('HEAD', p, h),
     post: (p, h) => add('POST', p, h),
     put: (p, h) => add('PUT', p, h),
     patch: (p, h) => add('PATCH', p, h),
@@ -77,7 +78,14 @@ export function createApp({ config, logger, services = {} }) {
     const started = Date.now();
     let pathname = '/';
     try {
-      const url = new URL(req.url ?? '/', 'http://placeholder');
+      // 用真实的 Host 构造 URL：分享链接要按访问地址生成，不能用占位主机名
+      const scheme = req.socket?.encrypted ? 'https' : 'http';
+      let url;
+      try {
+        url = new URL(req.url ?? '/', `${scheme}://${req.headers.host ?? 'localhost'}`);
+      } catch {
+        url = new URL(req.url ?? '/', `http://localhost:${config.port}`);
+      }
       // 只记 pathname，绝不记 query（可能含 token）
       pathname = url.pathname;
 

@@ -261,7 +261,6 @@ export async function unlockShare({ db, config, tokenSecret, share, password, no
 
   recordEvent(db, 'unlock_ok', { shareId: share.id });
   updateShare(db, share.id, { lastAccessAt: now });
-  if (share.status === 'waiting') updateShare(db, share.id, { status: 'active' });
 
   return { accessToken, expiresIn: config.accessTokenTtlSeconds };
 }
