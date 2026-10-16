@@ -1,0 +1,7 @@
+# pnpm 11 起，非认证类设置从 .npmrc 迁移到本文件。
+# 这里把依赖存储与缓存固定到项目内，避免在 ~ 或 /tmp 里留文件。
+
+# 依赖内容寻址存储
+storeDir: ./.pnpm-store
+# 元数据与下载缓存
+cacheDir: ./.cache/pnpm

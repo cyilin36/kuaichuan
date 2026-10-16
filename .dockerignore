@@ -1,0 +1,16 @@
+.git
+.gitignore
+.gitattributes
+node_modules
+.pnpm-store
+.cache
+coverage
+data
+test
+AGENTS.md
+PLAN.md
+README.md
+scripts/smoke.mjs
+scripts/verify.mjs
+.env
+*.log

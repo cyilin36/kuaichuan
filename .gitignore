@@ -1,0 +1,20 @@
+# ---- 依赖与缓存（依赖落点固定在项目内，见 pnpm-workspace.yaml）----
+node_modules/
+.pnpm-store/
+.cache/
+coverage/
+
+# ---- 运行数据与密钥 ----
+data/
+.env
+*.log
+
+# ---- 本地文档：按需求不入库 ----
+AGENTS.md
+PLAN.md
+README.md
+
+# ---- 测试与测试工具链：按需求不入库 ----
+test/
+scripts/smoke.mjs
+scripts/verify.mjs
