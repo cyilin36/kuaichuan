@@ -8,6 +8,10 @@ import { loadConfig } from './config.js';
 import { createLogger } from './logger.js';
 import { ensureDirs } from './paths.js';
 import { createApp } from './http/router.js';
+import { openDatabase, closeDatabase } from './storage/db.js';
+import { loadTokenSecret } from './storage/secret.js';
+import { createSweeper } from './jobs/sweeper.js';
+import { stats } from './domain/lifecycle.js';
 
 export async function main() {
   const config = loadConfig();
@@ -19,7 +23,17 @@ export async function main() {
 
   await ensureDirs(config.locations);
 
-  const app = createApp({ config, logger });
+  const db = openDatabase(config.locations, { logger });
+  const tokenSecret = await loadTokenSecret(config);
+
+  const services = {
+    db,
+    tokenSecret,
+    locations: config.locations,
+    stats: () => stats(db),
+  };
+
+  const app = createApp({ config, logger, services });
   const server = http.createServer(app.handler);
 
   // 大文件上传/下载与内存中继都是长连接，不设整体超时，只保留头部超时。
@@ -31,6 +45,9 @@ export async function main() {
     server.once('error', reject);
     server.listen(config.port, config.host, resolve);
   });
+
+  const sweeper = createSweeper({ db, locations: config.locations, logger, config });
+  await sweeper.tick();
 
   const { port } = server.address();
   logger.info('服务已启动', {
@@ -45,17 +62,22 @@ export async function main() {
     if (closing) return;
     closing = true;
     logger.info('收到退出信号，正在关闭', { signal });
+    sweeper.stop();
     server.close(() => {
+      closeDatabase(db);
       logger.close();
       process.exit(0);
     });
-    setTimeout(() => process.exit(0), 5000).unref();
+    setTimeout(() => {
+      closeDatabase(db);
+      process.exit(0);
+    }, 5000).unref();
   };
 
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-  return { server, config, logger };
+  return { server, config, logger, db, sweeper };
 }
 
 main().catch((err) => {
