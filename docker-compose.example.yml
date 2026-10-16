@@ -1,0 +1,60 @@
+# 快传 —— Docker 部署示例
+#
+# 用法：
+#   cp docker-compose.example.yml docker-compose.yml
+#   docker compose up -d
+#   打开 http://localhost:7654
+#
+# 想改端口 / 有效期 / 容量，直接改下面的 environment。
+
+services:
+  kuaichuan:
+    build: .
+    image: kuaichuan:latest
+    container_name: kuaichuan
+    restart: unless-stopped
+    ports:
+      - "7654:7654"
+    environment:
+      APP_NAME: 快传
+      PORT: "7654"
+      DATA_DIR: /data
+      ALLOW_EXTERNAL_DATA_DIR: "1"
+
+      # 暂存分享的保留时长与上限
+      DEFAULT_TTL_HOURS: "24"
+      MAX_TTL_HOURS: "168"
+      MAX_FILE_BYTES: "2147483648"      # 单文件 2GB
+      MAX_TEXT_BYTES: "1048576"         # 单条文字 1MB
+      MAX_TOTAL_BYTES: "21474836480"    # 暂存总量 20GB，0 表示不限制
+
+      # P2P 打洞失败时用服务器内存转发（全程不落盘）；设为 0 可关闭
+      RELAY_ENABLED: "1"
+      RELAY_WAIT_SECONDS: "120"
+      RELAY_MAX_SESSIONS: "8"
+
+      # 分享链接里要使用的地址。放在公网时建议填上，例如：
+      # BASE_URL: https://share.example.com
+      BASE_URL: ""
+
+      # STUN 服务器（留空表示只尝试内网直连）
+      STUN_URLS: "stun:stun.cloudflare.com:3478,stun:stun.l.google.com:19302"
+      # 可选 TURN，能明显提升打洞成功率
+      # TURN_URLS: turn:your-turn.example.com:3478
+      # TURN_USERNAME: user
+      # TURN_CREDENTIAL: pass
+
+      # 令牌签名密钥。留空则首次启动自动生成并保存到数据目录
+      # TOKEN_SECRET: 换成一串随机字符
+
+      LOG_LEVEL: info
+
+    volumes:
+      # 默认用命名卷：Docker 会沿用镜像里 /data 的属主，非 root 用户可直接写入。
+      - kuaichuan-data:/data
+      # 想直接看到数据文件，就改用宿主机目录（注意先把属主改成 1000:1000）：
+      #   mkdir -p data && sudo chown 1000:1000 data
+      # - ./data:/data
+
+volumes:
+  kuaichuan-data:

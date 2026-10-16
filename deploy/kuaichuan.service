@@ -1,0 +1,44 @@
+[Unit]
+Description=快传（kuaichuan）文件与文字分享服务
+Documentation=file:///opt/kuaichuan/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 建议专用系统用户，并只给它 data 目录的写权限：
+#   sudo useradd --system --home /opt/kuaichuan --shell /usr/sbin/nologin kuaichuan
+#   sudo mkdir -p /opt/kuaichuan/data && sudo chown -R kuaichuan:kuaichuan /opt/kuaichuan/data
+User=kuaichuan
+Group=kuaichuan
+WorkingDirectory=/opt/kuaichuan
+EnvironmentFile=-/opt/kuaichuan/.env
+
+# 注意：node 的实际路径按你的安装方式调整（nvm 装的要写绝对路径）
+ExecStart=/usr/bin/node /opt/kuaichuan/src/server.js
+
+Restart=on-failure
+RestartSec=3
+
+# ---- 加固：除 data 目录外，整个文件系统只读 ----
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/kuaichuan/data
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target
+
+# 启用：
+#   sudo cp deploy/kuaichuan.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now kuaichuan
+# 看日志：
+#   journalctl -u kuaichuan -f
