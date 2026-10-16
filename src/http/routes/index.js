@@ -3,7 +3,13 @@
  */
 
 import { registerHealthRoutes } from './health.js';
+import { registerShareRoutes } from './shares.js';
+import { registerUnlockRoutes } from './unlock.js';
+import { registerNetworkRoutes } from './network.js';
 
 export function registerRoutes(router, deps) {
   registerHealthRoutes(router, deps);
+  registerShareRoutes(router, deps);
+  registerUnlockRoutes(router, deps);
+  registerNetworkRoutes(router, deps);
 }
