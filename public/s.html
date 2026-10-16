@@ -11,11 +11,50 @@
 <body>
 <main class="page">
   <header class="brand">
-    <h1>快传</h1>
+    <h1 id="app-name">快传</h1>
     <span class="badge">接收分享</span>
+    <span class="spacer"></span>
+    <a class="muted small" href="/">我也要分享</a>
   </header>
+
   <p class="muted" id="status">正在读取分享信息…</p>
-  <div id="content"></div>
+
+  <section class="card" id="unlock-card" hidden>
+    <h2 id="unlock-title">这个分享需要密码</h2>
+    <p class="muted small" id="unlock-sub"></p>
+    <form id="unlock-form">
+      <label class="field">
+        <span>请输入 4 位密码（区分大小写）</span>
+        <input type="text" id="password-input" maxlength="4" autocomplete="off" autocapitalize="off" spellcheck="false">
+      </label>
+      <div class="row">
+        <button class="primary" type="submit" id="unlock-btn">查看</button>
+        <span class="muted small" id="unlock-error"></span>
+      </div>
+    </form>
+  </section>
+
+  <section class="card" id="content-card" hidden>
+    <h2 id="content-title">分享内容</h2>
+    <p class="muted small" id="content-meta"></p>
+    <div id="notices" class="stack"></div>
+
+    <div id="file-panel" hidden>
+      <ul class="file-list" id="file-list"></ul>
+      <div class="row" id="file-actions"></div>
+      <p class="muted small" id="file-hint"></p>
+    </div>
+
+    <div id="text-panel" hidden>
+      <pre class="text-view" id="text-view"></pre>
+      <div class="row" id="text-actions"></div>
+    </div>
+
+    <div id="transfer" hidden>
+      <progress id="progress" value="0" max="100"></progress>
+      <p class="muted small" id="transfer-text"></p>
+    </div>
+  </section>
 </main>
 <script type="module" src="/js/receive.js"></script>
 </body>

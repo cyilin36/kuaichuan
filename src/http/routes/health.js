@@ -19,4 +19,18 @@ export function registerHealthRoutes(router, { config, services = {} }) {
       staged: stats,
     });
   });
+
+  // 前端需要的公开配置（不含任何密钥）
+  router.get('/api/config', (req, res) => {
+    sendJson(res, 200, {
+      appName: config.appName,
+      version: config.version,
+      defaultTtlHours: config.defaultTtlHours,
+      maxTtlHours: config.maxTtlHours,
+      maxFileBytes: config.maxFileBytes,
+      maxTextBytes: config.maxTextBytes,
+      relayEnabled: config.relayEnabled,
+      passwordLength: 4,
+    });
+  });
 }

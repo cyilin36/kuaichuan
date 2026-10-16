@@ -11,11 +11,23 @@
 <body>
 <main class="page">
   <header class="brand">
-    <h1>快传</h1>
+    <h1 id="app-name">快传</h1>
     <span class="badge">我的分享</span>
+    <span class="spacer"></span>
+    <a class="muted small" href="/">新建分享</a>
   </header>
+
+  <p class="muted small">
+    这个列表只存在你这台设备的浏览器里（包括链接、密码和所有者凭证）。换设备或清空浏览器数据后就看不到了。
+  </p>
+
   <p class="muted" id="status">正在读取本机记录…</p>
-  <div id="list"></div>
+  <section class="card" id="list-card" hidden>
+    <div id="list"></div>
+  </section>
+  <div class="row" id="bulk-actions" hidden>
+    <button class="danger tiny" id="clear-all">清空本机记录</button>
+  </div>
 </main>
 <script type="module" src="/js/manage.js"></script>
 </body>

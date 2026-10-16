@@ -45,6 +45,25 @@ export function registerShareRoutes(router, { config, logger, services }) {
     sendJson(res, 201, created);
   });
 
+  // 接收方在输密码之前能看到的最小信息（不含标题/文件名等可能敏感的内容）
+  router.get('/api/shares/:id/public', async (req, res, { params }) => {
+    const share = getShareRow(db, params.id);
+    assertShareAvailable(share);
+    const files = listShareFiles(db, share.id);
+
+    sendJson(res, 200, {
+      id: share.id,
+      kind: share.kind,
+      mode: share.mode,
+      requiresPassword: Boolean(share.passwordHash),
+      fileCount: files.length,
+      totalBytes: share.totalBytes,
+      burnAfterRead: share.burnAfterRead,
+      maxDownloads: share.maxDownloads,
+      expiresAt: share.expiresAt,
+    });
+  });
+
   router.get('/api/shares/:id', async (req, res, { params, url }) => {
     const share = getShareRow(db, params.id);
     const viewer = requireViewer({ tokenSecret, share, token: extractToken(req, url) });
