@@ -13,6 +13,7 @@ import { loadTokenSecret } from './storage/secret.js';
 import { createSweeper } from './jobs/sweeper.js';
 import { createRelayBridge } from './realtime/relay-bridge.js';
 import { createPresence } from './realtime/presence.js';
+import { attachWebSocket } from './realtime/ws.js';
 import { stats } from './domain/lifecycle.js';
 
 export async function main() {
@@ -42,6 +43,7 @@ export async function main() {
 
   const app = createApp({ config, logger, services });
   const server = http.createServer(app.handler);
+  const realtime = attachWebSocket({ server, config, logger, services });
 
   // 大文件上传/下载与内存中继都是长连接，不设整体超时，只保留头部超时。
   server.requestTimeout = 0;
@@ -70,6 +72,7 @@ export async function main() {
     closing = true;
     logger.info('收到退出信号，正在关闭', { signal });
     sweeper.stop();
+    realtime.close();
     server.close(() => {
       closeDatabase(db);
       logger.close();

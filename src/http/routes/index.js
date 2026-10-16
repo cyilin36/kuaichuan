@@ -9,6 +9,7 @@ import { registerNetworkRoutes } from './network.js';
 import { registerStagedRoutes } from './staged.js';
 import { registerTextRoutes } from './text.js';
 import { registerRelayRoutes } from './relay.js';
+import { registerRtcRoutes } from './rtc.js';
 
 export function registerRoutes(router, deps) {
   registerHealthRoutes(router, deps);
@@ -18,4 +19,5 @@ export function registerRoutes(router, deps) {
   registerStagedRoutes(router, deps);
   registerTextRoutes(router, deps);
   registerRelayRoutes(router, deps);
+  registerRtcRoutes(router, deps);
 }

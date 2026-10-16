@@ -86,7 +86,9 @@ export function createRelayBridge({ config, logger }) {
    * 架管道：upload.req -> download.res，全程不落盘。
    * 传输错误在这里消化掉，不往外抛（此时响应头多半已经发出去了）。
    */
-  async function connect({ key, upload, download, maxBytes = 0, contentType = 'application/octet-stream' }) {
+  async function connect({
+    key, upload, download, maxBytes = 0, contentType = 'application/octet-stream', headers = {},
+  }) {
     active.add(key);
     let bytes = 0;
 
@@ -106,6 +108,7 @@ export function createRelayBridge({ config, logger }) {
         'Content-Type': contentType,
         'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff',
+        ...headers,
       });
 
       await pipeline(upload.req, counter, download.res);
