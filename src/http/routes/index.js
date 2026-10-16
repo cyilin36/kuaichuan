@@ -7,6 +7,8 @@ import { registerShareRoutes } from './shares.js';
 import { registerUnlockRoutes } from './unlock.js';
 import { registerNetworkRoutes } from './network.js';
 import { registerStagedRoutes } from './staged.js';
+import { registerTextRoutes } from './text.js';
+import { registerRelayRoutes } from './relay.js';
 
 export function registerRoutes(router, deps) {
   registerHealthRoutes(router, deps);
@@ -14,4 +16,6 @@ export function registerRoutes(router, deps) {
   registerUnlockRoutes(router, deps);
   registerNetworkRoutes(router, deps);
   registerStagedRoutes(router, deps);
+  registerTextRoutes(router, deps);
+  registerRelayRoutes(router, deps);
 }

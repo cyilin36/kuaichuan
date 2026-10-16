@@ -11,6 +11,8 @@ import { createApp } from './http/router.js';
 import { openDatabase, closeDatabase } from './storage/db.js';
 import { loadTokenSecret } from './storage/secret.js';
 import { createSweeper } from './jobs/sweeper.js';
+import { createRelayBridge } from './realtime/relay-bridge.js';
+import { createPresence } from './realtime/presence.js';
 import { stats } from './domain/lifecycle.js';
 
 export async function main() {
@@ -26,10 +28,15 @@ export async function main() {
   const db = openDatabase(config.locations, { logger });
   const tokenSecret = await loadTokenSecret(config);
 
+  const bridge = createRelayBridge({ config, logger });
+  const presence = createPresence({ bridge });
+
   const services = {
     db,
     tokenSecret,
     locations: config.locations,
+    bridge,
+    presence,
     stats: () => stats(db),
   };
 

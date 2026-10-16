@@ -81,6 +81,7 @@ export async function createShare({ db, config, logger, input = {}, requestOrigi
 
   let files = [];
   let textContent = null;
+  let textBytes = 0;
   let title;
 
   if (kind === 'file') {
@@ -109,11 +110,11 @@ export async function createShare({ db, config, logger, input = {}, requestOrigi
   } else {
     const raw = input.text === undefined || input.text === null ? '' : String(input.text);
     if (raw.trim() === '') throw badRequest('文字内容不能为空');
-    const bytes = Buffer.byteLength(raw, 'utf8');
-    if (config.maxTextBytes > 0 && bytes > config.maxTextBytes) {
+    textBytes = Buffer.byteLength(raw, 'utf8');
+    if (config.maxTextBytes > 0 && textBytes > config.maxTextBytes) {
       throw badRequest(`文字内容不能超过 ${config.maxTextBytes} 字节`);
     }
-    // P2P 文本的内容绝不入库
+    // P2P 文本的内容绝不入库，只记字节数
     if (mode === 'staged') textContent = raw;
     title = String(input.title ?? '').trim().slice(0, MAX_TITLE_LENGTH) || deriveTextTitle(raw);
   }
@@ -138,7 +139,7 @@ export async function createShare({ db, config, logger, input = {}, requestOrigi
     ?? `http://localhost:${config.port}`;
 
   const expiresAt = now + ttlHours * 3_600_000;
-  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+  const totalBytes = kind === 'file' ? files.reduce((sum, file) => sum + file.size, 0) : textBytes;
 
   insertShare(db, {
     id,
@@ -272,10 +273,11 @@ export async function revokeByOwner({ db, locations, share, now = Date.now() }) 
   return { alreadyRevoked: false };
 }
 
-/** 对外可见的分享信息（绝不包含哈希） */
+/** 对外可见的分享信息（绝不包含哈希，也不直接带文字内容） */
 export function publicMetadata({ share, files, role, senderOnline = null, now = Date.now() }) {
-  const revealed = role === 'owner' || role === 'access';
-  const textAvailable = share.kind === 'text' && share.mode === 'staged' && revealed;
+  void now;
+  const isText = share.kind === 'text';
+  const textIsStaged = isText && share.mode === 'staged';
 
   return {
     id: share.id,
@@ -295,8 +297,9 @@ export function publicMetadata({ share, files, role, senderOnline = null, now = 
     requiresPassword: Boolean(share.passwordHash),
     viewer: role ?? null,
     senderOnline: share.mode === 'p2p' ? senderOnline : null,
-    text: textAvailable ? share.textContent : null,
-    textBytes: textAvailable && share.textContent ? Buffer.byteLength(share.textContent, 'utf8') : null,
+    // 文字内容统一走 GET /api/shares/:id/text 取件（计次与焚毁在那里处理）
+    hasText: textIsStaged,
+    textBytes: isText ? share.totalBytes : null,
     files: (files ?? []).map((file) => ({
       idx: file.idx,
       relPath: file.relPath,
