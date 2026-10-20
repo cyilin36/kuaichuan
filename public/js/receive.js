@@ -125,6 +125,7 @@ async function renderContent() {
   if (share.burnAfterRead) notice('阅后即焚：内容被取走后立即销毁，只能取一次。', 'warn');
   if (share.maxDownloads) notice(`最多可被取走 ${share.maxDownloads} 次${share.downloadsLeft === null ? '' : `（剩余 ${share.downloadsLeft} 次）`}。`, 'warn');
   if (share.mode === 'p2p') notice('这是 P2P 分享：发送方必须保持页面打开。', '');
+  $('content-title').focus({ preventScroll: true });
 
   if (share.kind === 'text') {
     if (share.mode === 'staged') await loadTextStaged();
@@ -274,13 +275,18 @@ function renderFilesStaged() {
   list.replaceChildren();
   for (const file of share.files) {
     const li = document.createElement('li');
+    // Drag Handle Illusion：悬停时左侧 ⋮⋮ 淡入（仅装饰，不进无障碍树）
+    const handle = document.createElement('span');
+    handle.className = 'drag-handle';
+    handle.setAttribute('aria-hidden', 'true');
+    handle.textContent = '⋮⋮';
     const name = document.createElement('span');
     name.className = 'name';
     name.textContent = file.relPath;
     const size = document.createElement('span');
     size.className = 'size';
     size.textContent = formatBytes(file.size);
-    li.append(name, size);
+    li.append(handle, name, size);
     list.append(li);
   }
 
@@ -411,13 +417,18 @@ function renderFilesP2P() {
   list.replaceChildren();
   for (const file of share.files) {
     const li = document.createElement('li');
+    // Drag Handle Illusion：悬停时左侧 ⋮⋮ 淡入（仅装饰，不进无障碍树）
+    const handle = document.createElement('span');
+    handle.className = 'drag-handle';
+    handle.setAttribute('aria-hidden', 'true');
+    handle.textContent = '⋮⋮';
     const name = document.createElement('span');
     name.className = 'name';
     name.textContent = file.relPath;
     const size = document.createElement('span');
     size.className = 'size';
     size.textContent = formatBytes(file.size);
-    li.append(name, size);
+    li.append(handle, name, size);
     list.append(li);
   }
 

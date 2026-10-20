@@ -3,125 +3,175 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#f7f6f3">
 <title>快传 · 分享文件与文字</title>
 <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>
-<main class="page">
-  <header class="brand">
-    <h1 id="app-name">快传</h1>
-    <span class="badge">自建分享</span>
-    <span class="spacer"></span>
-    <a class="muted small" href="/manage">我的分享</a>
-  </header>
-  <p class="lead">选择文件或粘贴文字，生成一个链接和 4 位密码，别人打开链接就能拿走。</p>
+<a class="skip-link" href="#main">跳到主要内容</a>
 
-  <div class="tabs" role="tablist">
-    <button class="tab" id="tab-file" role="tab" aria-selected="true" data-kind="file">文件</button>
-    <button class="tab" id="tab-text" role="tab" aria-selected="false" data-kind="text">文字</button>
-  </div>
+<div class="app">
+  <aside class="sidebar" aria-label="主导航">
+    <div class="sidebar-inner">
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true">快</span>
+        <span class="brand-name" id="app-name">快传</span>
+      </a>
 
-  <section class="card">
-    <div class="modes">
-      <label class="mode">
-        <input type="radio" name="mode" value="p2p" checked>
-        <b>P2P 直传</b>
-        <span>文件不经过服务器磁盘，直接在你的浏览器和对方之间传。需要保持本页面打开。</span>
-      </label>
-      <label class="mode">
-        <input type="radio" name="mode" value="staged">
-        <b>暂存到服务器</b>
-        <span>上传到服务器保存，默认 24 小时。发完就可以关页面。</span>
-      </label>
+      <nav class="nav" aria-label="页面导航">
+        <p class="nav-label">工作区</p>
+        <a class="nav-item is-active" href="/" aria-current="page">
+          <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5"/></svg>
+          新建分享
+        </a>
+        <a class="nav-item" href="/manage">
+          <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4.5h11v8h-11z"/><path d="M2.5 4.5 8 9l5.5-4.5"/></svg>
+          我的分享
+        </a>
+      </nav>
+
+      <p class="sidebar-note">分享记录只存在这台设备的浏览器里，不需要账号。</p>
     </div>
+  </aside>
 
-    <div id="file-panel">
-      <label class="field">
-        <span>选择文件（可多选）</span>
-        <input type="file" id="file-input" multiple>
-      </label>
-      <label class="field">
-        <span>或选择整个文件夹（保留目录结构）</span>
-        <input type="file" id="dir-input" webkitdirectory multiple>
-      </label>
-      <ul class="file-list" id="file-list"></ul>
-      <p class="muted small" id="file-summary"></p>
-    </div>
+  <main class="main" id="main">
+    <div class="content">
+      <header class="page-head">
+        <h1 class="page-title">新建分享</h1>
+        <p class="page-desc">选择文件或粘贴文字，生成一个链接和 4 位密码，别人打开链接就能拿走。</p>
+      </header>
 
-    <div id="text-panel" hidden>
-      <label class="field">
-        <span>要分享的文字</span>
-        <textarea id="text-input" placeholder="在这里粘贴文字…"></textarea>
-      </label>
-      <p class="muted small" id="text-count"></p>
-    </div>
-
-    <hr class="divider">
-
-    <div class="grid-2">
-      <label class="field">
-        <span>有效期</span>
-        <select id="ttl-select"></select>
-      </label>
-      <label class="field">
-        <span>最多被取走几次（留空表示不限）</span>
-        <input type="number" id="max-downloads" min="1" max="100000" placeholder="不限">
-      </label>
-    </div>
-
-    <label class="check"><input type="checkbox" id="password-toggle"> 使用密码保护（自动生成 4 位密码）</label>
-    <label class="check"><input type="checkbox" id="burn-toggle"> 阅后即焚（被取走一次后立即销毁）</label>
-
-    <div class="row">
-      <button class="primary" id="create-btn">生成链接</button>
-      <span class="muted small" id="create-status"></span>
-    </div>
-  </section>
-
-  <section class="card" id="result" hidden>
-    <h2>分享已创建</h2>
-
-    <div class="field">
-      <span>把这个链接发给对方</span>
-      <div class="row">
-        <code class="share-link" id="share-url"></code>
-        <button class="tiny" id="copy-url">复制链接</button>
-        <a class="tiny" id="open-url" href="#" target="_blank" rel="noreferrer">打开</a>
+      <div class="tabs" role="tablist" aria-label="分享内容类型">
+        <button class="tab" id="tab-file" type="button" role="tab" aria-selected="true" aria-controls="file-panel" data-kind="file">文件</button>
+        <button class="tab" id="tab-text" type="button" role="tab" aria-selected="false" aria-controls="text-panel" data-kind="text">文字</button>
       </div>
-    </div>
 
-    <div id="password-wrap" hidden>
-      <div class="password-box">
-        <div>
-          <div class="small muted">密码（只显示这一次）</div>
-          <b id="share-password"></b>
+      <section class="card create-card" aria-label="分享设置">
+        <fieldset class="group">
+          <legend class="field-label">分享方式</legend>
+          <div class="modes">
+            <label class="mode">
+              <input type="radio" name="mode" value="p2p" checked>
+              <span class="mode-body">
+                <span class="mode-title">P2P 直传</span>
+                <span class="mode-desc">文件不经过服务器磁盘，直接在你的浏览器和对方之间传。需要保持本页面打开。</span>
+              </span>
+            </label>
+            <label class="mode">
+              <input type="radio" name="mode" value="staged">
+              <span class="mode-body">
+                <span class="mode-title">暂存到服务器</span>
+                <span class="mode-desc">上传到服务器保存，默认 24 小时。发完就可以关页面。</span>
+              </span>
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="panel" id="file-panel">
+          <div class="field">
+            <label class="field-label" for="file-input">选择文件（可多选）</label>
+            <input type="file" id="file-input" multiple>
+          </div>
+          <div class="field">
+            <label class="field-label" for="dir-input">或选择整个文件夹（保留目录结构）</label>
+            <input type="file" id="dir-input" webkitdirectory multiple>
+          </div>
+          <ul class="file-list" id="file-list" aria-label="已选择的文件" tabindex="0"></ul>
+          <p class="field-hint" id="file-summary" role="status" aria-live="polite"></p>
         </div>
-        <button class="tiny" id="copy-password">复制密码</button>
-      </div>
-      <p class="muted small">链接和密码要分开发送，别放在同一条消息里。</p>
-    </div>
 
-    <div class="qr-wrap">
-      <div>
-        <div class="small muted">手机扫码打开</div>
-        <img class="qr" id="qr-img" alt="分享二维码">
-      </div>
-      <div class="stack" style="flex:1; min-width:220px">
-        <label class="field" style="margin:0">
-          <span>链接里使用哪个地址</span>
-          <select id="origin-select"></select>
-        </label>
-        <p class="muted small">对方和你不在同一台机器时，请选一个他能访问到的地址。</p>
-        <div id="sender-status" class="notice" hidden></div>
-        <progress id="progress" value="0" max="100" hidden></progress>
-        <p class="muted small" id="progress-text"></p>
-      </div>
-    </div>
+        <div class="panel" id="text-panel" hidden>
+          <div class="field">
+            <label class="field-label" for="text-input">要分享的文字</label>
+            <textarea id="text-input" placeholder="在这里粘贴文字…" spellcheck="false"></textarea>
+          </div>
+          <p class="field-hint" id="text-count" role="status" aria-live="polite"></p>
+        </div>
 
-    <ol class="steps" id="next-steps"></ol>
-  </section>
-</main>
+        <hr class="divider">
+
+        <div class="grid-2">
+          <div class="field">
+            <label class="field-label" for="ttl-select">有效期</label>
+            <select id="ttl-select"></select>
+          </div>
+          <div class="field">
+            <label class="field-label" for="max-downloads">最多被取走几次</label>
+            <input type="number" id="max-downloads" min="1" max="100000" placeholder="留空表示不限" inputmode="numeric">
+          </div>
+        </div>
+
+        <div class="options">
+          <label class="option-row">
+            <input type="checkbox" id="password-toggle">
+            <span class="option-body">
+              <span class="option-title">使用密码保护</span>
+              <span class="option-desc">自动生成 4 位密码，明文只显示一次。</span>
+            </span>
+          </label>
+          <label class="option-row">
+            <input type="checkbox" id="burn-toggle">
+            <span class="option-body">
+              <span class="option-title">阅后即焚</span>
+              <span class="option-desc">被取走一次后立即销毁，无法再次获取。</span>
+            </span>
+          </label>
+        </div>
+
+        <div class="action-row">
+          <button class="primary" id="create-btn" type="button">生成链接</button>
+          <span class="muted small" id="create-status" role="status" aria-live="polite"></span>
+        </div>
+      </section>
+
+      <section class="card result-card" id="result" hidden aria-labelledby="result-title">
+        <h2 id="result-title" tabindex="-1">分享已创建</h2>
+        <p class="card-desc">把下面的链接和密码分开发送给对方。</p>
+
+        <div class="field">
+          <span class="field-label">分享链接</span>
+          <div class="copy-row">
+            <code class="copy-value" id="share-url"></code>
+            <span class="copy-actions">
+              <button class="tiny" id="copy-url" type="button">复制链接</button>
+              <a class="button tiny" id="open-url" href="#" target="_blank" rel="noreferrer">打开</a>
+            </span>
+          </div>
+        </div>
+
+        <div class="password-block" id="password-wrap" hidden>
+          <div class="password-head">
+            <span class="field-label">密码</span>
+            <span class="tag tag-yellow">只显示这一次</span>
+          </div>
+          <div class="copy-row">
+            <b class="password-value" id="share-password"></b>
+            <button class="tiny" id="copy-password" type="button">复制密码</button>
+          </div>
+          <p class="field-hint">链接和密码要分开发送，别放在同一条消息里。</p>
+        </div>
+
+        <div class="qr-block">
+          <img class="qr" id="qr-img" alt="分享二维码">
+          <div class="qr-side">
+            <div class="field">
+              <label class="field-label" for="origin-select">链接里使用哪个地址</label>
+              <select id="origin-select"></select>
+            </div>
+            <p class="field-hint">对方和你不在同一台机器时，请选一个他能访问到的地址。</p>
+          </div>
+        </div>
+
+        <div id="sender-status" class="notice" hidden role="status" aria-live="polite"></div>
+        <progress id="progress" value="0" max="100" aria-label="传输进度" hidden></progress>
+        <p class="field-hint" id="progress-text"></p>
+        <ol class="steps" id="next-steps"></ol>
+      </section>
+    </div>
+  </main>
+</div>
+
 <script type="module" src="/js/create.js"></script>
 </body>
 </html>

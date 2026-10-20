@@ -3,32 +3,59 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#f7f6f3">
 <meta name="robots" content="noindex">
 <title>我的分享 · 快传</title>
 <link rel="stylesheet" href="/css/app.css">
 </head>
 <body>
-<main class="page">
-  <header class="brand">
-    <h1 id="app-name">快传</h1>
-    <span class="badge">我的分享</span>
-    <span class="spacer"></span>
-    <a class="muted small" href="/">新建分享</a>
-  </header>
+<a class="skip-link" href="#main">跳到主要内容</a>
 
-  <p class="muted small">
-    这个列表只存在你这台设备的浏览器里（包括链接、密码和所有者凭证）。换设备或清空浏览器数据后就看不到了。
-  </p>
+<div class="app">
+  <aside class="sidebar" aria-label="主导航">
+    <div class="sidebar-inner">
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true">快</span>
+        <span class="brand-name" id="app-name">快传</span>
+      </a>
 
-  <p class="muted" id="status">正在读取本机记录…</p>
-  <section class="card" id="list-card" hidden>
-    <div id="list"></div>
-  </section>
-  <div class="row" id="bulk-actions" hidden>
-    <button class="danger tiny" id="clear-all">清空本机记录</button>
-  </div>
-</main>
+      <nav class="nav" aria-label="页面导航">
+        <p class="nav-label">工作区</p>
+        <a class="nav-item" href="/">
+          <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5"/></svg>
+          新建分享
+        </a>
+        <a class="nav-item is-active" href="/manage" aria-current="page">
+          <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4.5h11v8h-11z"/><path d="M2.5 4.5 8 9l5.5-4.5"/></svg>
+          我的分享
+        </a>
+      </nav>
+
+      <p class="sidebar-note">分享记录只存在这台设备的浏览器里，不需要账号。</p>
+    </div>
+  </aside>
+
+  <main class="main" id="main">
+    <div class="content">
+      <header class="page-head">
+        <h1 class="page-title">我的分享</h1>
+        <p class="page-desc">这个列表只存在你这台设备的浏览器里（包括链接、密码和所有者凭证）。换设备或清空浏览器数据后就看不到了。</p>
+      </header>
+
+      <p class="muted" id="status" role="status" aria-live="polite">正在读取本机记录…</p>
+
+      <section class="card" id="list-card" hidden aria-label="本机分享记录">
+        <div id="list" class="share-list"></div>
+      </section>
+
+      <div class="action-row" id="bulk-actions" hidden>
+        <button class="tiny danger" id="clear-all" type="button">清空本机记录</button>
+      </div>
+    </div>
+  </main>
+</div>
+
 <script type="module" src="/js/manage.js"></script>
 </body>
 </html>

@@ -39,6 +39,12 @@ async function renderItem(record) {
   const wrapper = document.createElement('div');
   wrapper.className = 'manage-item';
 
+  // Drag Handle Illusion：悬停时左侧 ⋮⋮ 淡入（仅装饰，不进无障碍树）
+  const handle = document.createElement('span');
+  handle.className = 'drag-handle';
+  handle.setAttribute('aria-hidden', 'true');
+  handle.textContent = '⋮⋮';
+
   const info = document.createElement('div');
   info.className = 'info';
 
@@ -60,8 +66,7 @@ async function renderItem(record) {
   stateLine.textContent = '正在查询状态…';
 
   const linkRow = document.createElement('div');
-  linkRow.className = 'row';
-  linkRow.style.marginTop = '8px';
+  linkRow.className = 'row share-links';
 
   const link = document.createElement('a');
   link.className = 'mono small';
@@ -112,7 +117,7 @@ async function renderItem(record) {
 
   actions.append(revokeButton, forgetButton);
   info.append(title, meta, stateLine, linkRow);
-  wrapper.append(info, actions);
+  wrapper.append(handle, info, actions);
 
   // 查询真实状态
   try {

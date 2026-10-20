@@ -72,13 +72,18 @@ function renderFiles() {
   for (const item of state.files) {
     total += item.size;
     const li = document.createElement('li');
+    // Drag Handle Illusion：悬停时左侧 ⋮⋮ 淡入（仅装饰，不进无障碍树）
+    const handle = document.createElement('span');
+    handle.className = 'drag-handle';
+    handle.setAttribute('aria-hidden', 'true');
+    handle.textContent = '⋮⋮';
     const name = document.createElement('span');
     name.className = 'name';
     name.textContent = item.relPath;
     const size = document.createElement('span');
     size.className = 'size';
     size.textContent = formatBytes(item.size);
-    li.append(name, size);
+    li.append(handle, name, size);
     list.append(li);
   }
 
@@ -186,6 +191,9 @@ async function onCreate() {
 
     renderResult(created);
     setStatus('分享已创建', 'ok');
+    // 结果区在表单下方，窄屏上主动带进视野（无动画，尊重 reduced-motion）
+    $('result').scrollIntoView({ block: 'start' });
+    $('result-title').focus({ preventScroll: true });
 
     if (created.mode === 'staged') {
       if (created.kind === 'file') await uploadStaged(created);
