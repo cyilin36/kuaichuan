@@ -1,0 +1,265 @@
+# 快传 —— 发布工作流
+#
+# 触发：推送 tag（tag 形如 1.2.3 或 1.2.3-beta.1，允许 v 前缀）。
+#
+#   1.2.3         稳定版：Docker 镜像打上 1.2.3 与 latest；GitHub Release 标记为 latest。
+#   1.2.3-beta.1  预发布版：Docker 镜像只打 1.2.3-beta.1；Release 标记为 pre-release，不打 latest。
+#
+# 产物：
+#   - 容器镜像：ghcr.io/<owner>/<repo>:<version>（稳定版另有 latest）
+#   - 部署包：kuaichuan-<version>.tar.gz / .zip 与 SHA256SUMS，附在 GitHub Release 上
+#
+# 说明：
+#   - 只用内置 GITHUB_TOKEN，无需配置 secret；首次发布的镜像包默认私有，
+#     如需匿名拉取，请在仓库 Packages 设置中改为 public。
+#   - 镜像只构建 linux/amd64；需要 arm64 时在 docker 任务的 platforms 中追加即可。
+#   - 部署包用 git archive 从 tag 对应提交生成，只含已跟踪文件，不含测试与本地数据。
+#   - tag 不支持语义化版本的构建元数据（+ 后缀），因为 Docker 标签不允许 + 字符。
+
+name: 发布
+
+on:
+  push:
+    tags:
+      # 只匹配含至少两个点的 tag，具体格式在 prepare 任务里严格校验
+      - '*.*.*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  prepare:
+    name: 解析版本
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      image: ${{ steps.meta.outputs.image }}
+      docker_tags: ${{ steps.meta.outputs.docker_tags }}
+    steps:
+      - name: 校验 tag 并推导版本与镜像标签
+        id: meta
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          version="${TAG#v}"
+          if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "::error::tag \"${TAG}\" 不符合 x.x.x 或 x.x.x-xxx 格式，已中止发布"
+            exit 1
+          fi
+
+          prerelease=false
+          if [[ "$version" == *-* ]]; then
+            prerelease=true
+          fi
+
+          # ghcr 的镜像名必须全小写
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          docker_tags="${image}:${version}"
+          if [ "$prerelease" = "false" ]; then
+            docker_tags="${docker_tags},${image}:latest"
+          fi
+
+          {
+            echo "tag=${TAG}"
+            echo "version=${version}"
+            echo "prerelease=${prerelease}"
+            echo "image=${image}"
+            echo "docker_tags=${docker_tags}"
+          } >> "$GITHUB_OUTPUT"
+
+          channel="稳定版"
+          if [ "$prerelease" = "true" ]; then
+            channel="预发布版（不打 latest）"
+          fi
+          {
+            echo '## 发布信息'
+            echo
+            echo "- tag：\`${TAG}\`"
+            echo "- 版本：\`${version}\`"
+            echo "- 类型：${channel}"
+            echo "- 镜像标签：\`${docker_tags}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  docker:
+    name: Docker 打包与推送
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 准备 Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录 GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 构建并推送镜像
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ needs.prepare.outputs.docker_tags }}
+          labels: |
+            org.opencontainers.image.title=kuaichuan
+            org.opencontainers.image.description=快传：自建的文件与文字分享服务
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release:
+    name: Release 打包
+    needs: [prepare, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 生成部署包与校验和
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          rm -rf dist
+          mkdir -p dist
+
+          # 从 tag 对应的提交打包，只含已跟踪文件（源码、public、Dockerfile、deploy 等）
+          git archive --format=tar.gz --prefix="kuaichuan-${VERSION}/" \
+            -o "dist/kuaichuan-${VERSION}.tar.gz" "${GITHUB_SHA}"
+          git archive --format=zip --prefix="kuaichuan-${VERSION}/" \
+            -o "dist/kuaichuan-${VERSION}.zip" "${GITHUB_SHA}"
+
+          (cd dist && sha256sum ./*.tar.gz ./*.zip > SHA256SUMS)
+          cat dist/SHA256SUMS
+
+      - name: 生成 Release 说明
+        shell: bash
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+          IMAGE: ${{ needs.prepare.outputs.image }}
+          DIGEST: ${{ needs.docker.outputs.digest }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          if [ "$PRERELEASE" = "true" ]; then
+            channel='> 这是**预发布版本**，供测试使用；Docker 镜像不打 `latest` 标签。'
+          else
+            channel='> 这是**稳定版本**；Docker 镜像同时提供 `latest` 标签。'
+          fi
+          digest="${DIGEST:-（构建输出未提供）}"
+
+          cat > dist/RELEASE_NOTES.md <<'EOF'
+          ## 快传 %VERSION%
+
+          %CHANNEL%
+
+          ### Docker 镜像
+
+          ```bash
+          docker pull %IMAGE%:%VERSION%
+          docker run -d --name kuaichuan -p 7654:7654 -v kuaichuan-data:/data %IMAGE%:%VERSION%
+          ```
+
+          镜像：`%IMAGE%:%VERSION%`
+          镜像摘要：`%DIGEST%`
+
+          ### 部署包
+
+          | 文件 | 说明 |
+          | --- | --- |
+          | `kuaichuan-%VERSION%.tar.gz` | Linux / macOS 部署包 |
+          | `kuaichuan-%VERSION%.zip` | Windows 部署包 |
+          | `SHA256SUMS` | 上述文件的校验和 |
+
+          下载后先校验：
+
+          ```bash
+          sha256sum -c SHA256SUMS
+          ```
+
+          然后解压并启动（Linux / macOS）：
+
+          ```bash
+          tar -xzf kuaichuan-%VERSION%.tar.gz
+          cd kuaichuan-%VERSION%
+          ./scripts/pnpm-local.sh install
+          cp .env.example .env
+          pnpm start
+          ```
+
+          ### 变更
+
+          %REPO_URL%/commits/%TAG%
+          EOF
+
+          sed -i \
+            -e "s|%VERSION%|${VERSION}|g" \
+            -e "s|%TAG%|${TAG}|g" \
+            -e "s|%CHANNEL%|${channel}|g" \
+            -e "s|%IMAGE%|${IMAGE}|g" \
+            -e "s|%DIGEST%|${digest}|g" \
+            -e "s|%REPO_URL%|https://github.com/${REPO}|g" \
+            dist/RELEASE_NOTES.md
+
+          cat dist/RELEASE_NOTES.md
+
+      - name: 创建或更新 Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+
+          files=(dist/*.tar.gz dist/*.zip dist/SHA256SUMS)
+
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            # 重跑同一条 tag：覆盖资源与说明，不重复创建
+            echo "Release ${TAG} 已存在，覆盖资源"
+            gh release upload "$TAG" "${files[@]}" --clobber
+            gh release edit "$TAG" --notes-file dist/RELEASE_NOTES.md
+          else
+            args=(--title "$TAG" --notes-file dist/RELEASE_NOTES.md --verify-tag)
+            if [ "$PRERELEASE" = "true" ]; then
+              args+=(--prerelease --latest=false)   # 预发布：不打 latest
+            else
+              args+=(--latest)                      # 稳定版：标记为 latest
+            fi
+            gh release create "$TAG" "${files[@]}" "${args[@]}"
+          fi
+
+          gh release view "$TAG" --json url,tagName,isPrerelease,isLatest \
+            --jq '"发布地址: \(.url)  预发布: \(.isPrerelease)  latest: \(.isLatest)"'

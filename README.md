@@ -56,6 +56,14 @@ docker compose up -d
 mkdir -p data && sudo chown 1000:1000 data
 ```
 
+仓库在打 tag 时会自动构建镜像并发布到 GitHub Container Registry，也可以不本地构建，直接拉取使用：
+
+```bash
+docker pull ghcr.io/cyilin36/kuaichuan:latest
+```
+
+使用发布镜像时，删除 `docker-compose.yml` 中的 `build: .`，并将 `image` 改为 `ghcr.io/cyilin36/kuaichuan:latest`。`latest` 跟随最新稳定版，每个版本另有 `x.y.z` 标签；预发布版只有版本号标签，不包含 `latest`。若提示未授权，请先执行 `docker login ghcr.io`。
+
 ### 方式三：作为系统服务运行
 
 仓库提供 systemd 服务模板 [deploy/kuaichuan.service](deploy/kuaichuan.service)。请先根据实际路径修改模板中的 `WorkingDirectory` 与 `ExecStart`，再复制到 `/etc/systemd/system/` 并执行：
