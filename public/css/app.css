@@ -642,13 +642,6 @@ button.primary:active,
   line-height: 1.5;
 }
 
-.mode-desc {
-  display: block;
-  margin-top: 2px;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.55;
-}
 
 .panel {
   margin-top: 20px;
