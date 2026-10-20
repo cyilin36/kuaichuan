@@ -10,7 +10,7 @@
  *   - hover 只变背景，active 只加深背景，过渡 150ms
  *
  * 关于强调色：设计 token 的原始蓝 #2eaadc 用于图形与状态色；
- * 承载文字（链接、填充按钮、焦点环）时改用加深的 #147a9e，以满足 WCAG AA 4.5:1。
+ * 承载文字（链接、填充按钮、焦点环）时改用加深的 #116b8c，以满足 WCAG AA 4.5:1。
  */
 
 :root {
@@ -27,9 +27,9 @@
 
   /* 强调色 */
   --accent: #2eaadc;
-  --accent-ink: #147a9e;
-  --accent-ink-hover: #116b8c;
-  --accent-ink-active: #0e5c78;
+  --accent-ink: #116b8c;
+  --accent-ink-hover: #0e5c78;
+  --accent-ink-active: #0b4d64;
   --blue-50: #eff6ff;
   --red: #eb5757;
   --red-ink: #b42318;
@@ -776,7 +776,7 @@ button.primary:active,
 
 .file-list .size {
   flex: 0 0 auto;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
