@@ -103,13 +103,13 @@ jobs:
       digest: ${{ steps.build.outputs.digest }}
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 准备 Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: 登录 GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -117,7 +117,7 @@ jobs:
 
       - name: 构建并推送镜像
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64
@@ -140,7 +140,7 @@ jobs:
       contents: write
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 生成部署包与校验和
         shell: bash
@@ -261,5 +261,6 @@ jobs:
             gh release create "$TAG" "${files[@]}" "${args[@]}"
           fi
 
-          gh release view "$TAG" --json url,tagName,isPrerelease,isLatest \
-            --jq '"发布地址: \(.url)  预发布: \(.isPrerelease)  latest: \(.isLatest)"'
+          # gh release view 不支持 isLatest 字段，这里用 REST 接口回显（字段稳定）
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" \
+            --jq '"发布地址: \(.html_url)  预发布: \(.prerelease)  名称: \(.tag_name)"'
