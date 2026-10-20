@@ -24,11 +24,11 @@ async function revoke(record, onDone) {
   try {
     await apiJson(`/api/shares/${record.id}`, { method: 'DELETE', token: record.ownerToken });
     removeLocalShare(record.id);
-    onDone('已作废，服务器上的内容也已删除。');
+    onDone('已作废并删除内容。');
   } catch (err) {
     if (err.status === 404 || err.status === 410) {
       removeLocalShare(record.id);
-      onDone('这个分享本来就已经失效了，已从本机记录里移除。');
+      onDone('该分享已失效，已从本机记录中移除。');
       return;
     }
     onDone(`作废失败：${err.message}`);
@@ -138,7 +138,7 @@ async function renderItem(record) {
     title.append(' ', pill(metaData.status === 'active' ? '可用' : '等待中', 'live'));
   } catch (err) {
     if (err.status === 404 || err.status === 410) {
-      stateLine.textContent = err.status === 410 ? '已失效（过期或被作废）' : '服务器上已不存在';
+      stateLine.textContent = err.status === 410 ? '已失效（过期或被作废）' : '分享已不存在';
       stateLine.className = 'small danger';
       title.append(' ', pill('已失效', 'dead'));
       revokeButton.disabled = true;
@@ -159,14 +159,14 @@ async function init() {
 
   const shares = listLocalShares();
   if (shares.length === 0) {
-    setStatus('本机还没有分享记录。去首页创建一个吧。');
+    setStatus('本机暂无分享记录，可前往首页创建。');
     return;
   }
 
   $('list-card').hidden = false;
   $('bulk-actions').hidden = false;
   $('clear-all').addEventListener('click', () => {
-    if (!window.confirm('只清空本机记录，服务器上的分享仍然存在。确定吗？')) return;
+    if (!window.confirm('仅清空这台设备上的记录，已创建的分享仍然有效。是否继续？')) return;
     for (const record of listLocalShares()) removeLocalShare(record.id);
     $('list').replaceChildren();
     setStatus('本机记录已清空。');

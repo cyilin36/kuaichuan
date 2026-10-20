@@ -320,12 +320,6 @@ textarea:focus-visible {
   scroll-margin-top: 24px;
 }
 
-.card-desc {
-  margin: 0 0 20px;
-  color: var(--text-secondary);
-  font-size: 14px;
-  line-height: 1.6;
-}
 
 .divider {
   margin: 20px 0;
@@ -629,10 +623,7 @@ button.primary:active,
   cursor: pointer;
 }
 
-.mode-body {
-  display: block;
-  min-width: 0;
-}
+
 
 .mode-title {
   display: block;
@@ -641,6 +632,7 @@ button.primary:active,
   font-weight: 600;
   line-height: 1.5;
 }
+
 
 
 .panel {
@@ -692,6 +684,7 @@ button.primary:active,
   font-size: 13px;
   line-height: 1.55;
 }
+
 
 .action-row {
   display: flex;

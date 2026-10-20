@@ -50,26 +50,22 @@
           <div class="modes">
             <label class="mode">
               <input type="radio" name="mode" value="p2p" checked>
-              <span class="mode-body">
-                <span class="mode-title">P2P 直传</span>
-              </span>
+              <span class="mode-title">P2P 直传</span>
             </label>
             <label class="mode">
               <input type="radio" name="mode" value="staged">
-              <span class="mode-body">
-                <span class="mode-title">暂存到服务器</span>
-              </span>
+              <span class="mode-title">暂存到服务器</span>
             </label>
           </div>
         </fieldset>
 
         <div class="panel" id="file-panel">
           <div class="field">
-            <label class="field-label" for="file-input">选择文件（可多选）</label>
+            <label class="field-label" for="file-input">选择文件</label>
             <input type="file" id="file-input" multiple>
           </div>
           <div class="field">
-            <label class="field-label" for="dir-input">或选择整个文件夹（保留目录结构）</label>
+            <label class="field-label" for="dir-input">选择文件夹</label>
             <input type="file" id="dir-input" webkitdirectory multiple>
           </div>
           <ul class="file-list" id="file-list" aria-label="已选择的文件" tabindex="0"></ul>
@@ -92,8 +88,8 @@
             <select id="ttl-select"></select>
           </div>
           <div class="field">
-            <label class="field-label" for="max-downloads">最多被取走几次</label>
-            <input type="number" id="max-downloads" min="1" max="100000" placeholder="留空表示不限" inputmode="numeric">
+            <label class="field-label" for="max-downloads">最多取走次数</label>
+            <input type="number" id="max-downloads" min="1" max="100000" placeholder="不限" inputmode="numeric">
           </div>
         </div>
 
@@ -102,14 +98,14 @@
             <input type="checkbox" id="password-toggle">
             <span class="option-body">
               <span class="option-title">使用密码保护</span>
-              <span class="option-desc">自动生成 4 位密码，明文只显示一次。</span>
+              <span class="option-desc">自动生成 4 位密码，仅显示一次。</span>
             </span>
           </label>
           <label class="option-row">
             <input type="checkbox" id="burn-toggle">
             <span class="option-body">
               <span class="option-title">阅后即焚</span>
-              <span class="option-desc">被取走一次后立即销毁，无法再次获取。</span>
+              <span class="option-desc">内容被查看或下载一次后自动失效。</span>
             </span>
           </label>
         </div>
@@ -122,7 +118,6 @@
 
       <section class="card result-card" id="result" hidden aria-labelledby="result-title">
         <h2 id="result-title" tabindex="-1">分享已创建</h2>
-        <p class="card-desc">把下面的链接和密码分开发送给对方。</p>
 
         <div class="field">
           <span class="field-label">分享链接</span>
@@ -138,23 +133,22 @@
         <div class="password-block" id="password-wrap" hidden>
           <div class="password-head">
             <span class="field-label">密码</span>
-            <span class="tag tag-yellow">只显示这一次</span>
+            <span class="tag tag-yellow">仅显示一次</span>
           </div>
           <div class="copy-row">
             <b class="password-value" id="share-password"></b>
             <button class="tiny" id="copy-password" type="button">复制密码</button>
           </div>
-          <p class="field-hint">链接和密码要分开发送，别放在同一条消息里。</p>
+          <p class="field-hint">请将链接与密码分开告知对方。</p>
         </div>
 
         <div class="qr-block">
           <img class="qr" id="qr-img" alt="分享二维码">
           <div class="qr-side">
             <div class="field">
-              <label class="field-label" for="origin-select">链接里使用哪个地址</label>
+              <label class="field-label" for="origin-select">分享地址</label>
               <select id="origin-select"></select>
             </div>
-            <p class="field-hint">对方和你不在同一台机器时，请选一个他能访问到的地址。</p>
           </div>
         </div>
 

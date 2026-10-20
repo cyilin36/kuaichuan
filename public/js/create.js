@@ -142,19 +142,19 @@ function buildInput() {
 
 function validate() {
   if (state.kind === 'file') {
-    if (state.files.length === 0) return '请先选择要分享的文件';
+    if (state.files.length === 0) return '请先选择要分享的文件。';
     const oversize = state.files.find((item) => item.size > state.config.maxFileBytes);
     if (oversize) return `「${oversize.name}」超过单文件上限 ${formatBytes(state.config.maxFileBytes)}`;
   } else {
     const text = $('text-input').value;
-    if (text.trim() === '') return '请先输入要分享的文字';
+    if (text.trim() === '') return '请输入要分享的文字。';
     if (new TextEncoder().encode(text).length > state.config.maxTextBytes) {
       return `文字超过上限 ${formatBytes(state.config.maxTextBytes)}`;
     }
   }
   const maxDownloadsRaw = $('max-downloads').value.trim();
   if (maxDownloadsRaw !== '' && (!Number.isInteger(Number(maxDownloadsRaw)) || Number(maxDownloadsRaw) < 1)) {
-    return '最多取走次数要填正整数，或留空';
+    return '最多取走次数须为正整数，或留空。';
   }
   return null;
 }
@@ -197,7 +197,7 @@ async function onCreate() {
 
     if (created.mode === 'staged') {
       if (created.kind === 'file') await uploadStaged(created);
-      else setSenderStatus('文字已保存到服务器，可以关闭本页面了。', 'ok');
+      else setSenderStatus('上传完成，可以关闭本页面了。', 'ok');
     } else {
       await startP2PSession(created);
     }
@@ -240,18 +240,12 @@ function renderNextSteps(share) {
   const steps = $('next-steps');
   const items = [];
 
+  items.push(share.password ? '请将链接与密码分开发送给对方。' : '请将链接发送给对方。');
   if (share.mode === 'p2p') {
-    items.push('把链接发给对方，并单独把密码告诉他。');
-    items.push('保持本页面打开——你关掉页面，链接就失效了。');
-    items.push('对方打开链接后会自动开始传输，进度会显示在这里。');
+    items.push('请保持本页面开启，关闭后链接即失效。');
   } else {
-    items.push('把链接发给对方，并单独把密码告诉他。');
-    items.push(`文件保存在服务器上，${Math.round(share.ttlHours)} 小时后自动删除。`);
-    items.push('现在就可以关闭本页面了。');
+    items.push('当前可以关闭本页面。');
   }
-
-  if (share.burnAfterRead) items.push('这是阅后即焚分享：被取走一次后立即销毁。');
-  if (share.maxDownloads) items.push(`最多被取走 ${share.maxDownloads} 次，之后链接失效。`);
 
   steps.replaceChildren();
   for (const text of items) {
@@ -299,7 +293,7 @@ async function uploadStaged(share) {
 
   let uploaded = 0;
   const startedAt = Date.now();
-  setSenderStatus('正在上传到服务器…');
+  setSenderStatus('正在上传…');
 
   try {
     for (const [idx, item] of state.files.entries()) {
@@ -318,7 +312,7 @@ async function uploadStaged(share) {
       progress.value = total > 0 ? (uploaded / total) * 100 : 100;
     }
     progressText.textContent = `已上传 ${formatBytes(uploaded)}`;
-    setSenderStatus('全部文件已保存到服务器，可以关闭本页面了。', 'ok');
+    setSenderStatus('上传完成，可以关闭本页面了。', 'ok');
   } catch (err) {
     setSenderStatus(`上传失败：${err.message}`, 'danger');
   }
@@ -354,18 +348,18 @@ async function startP2PSession(share) {
     handlers: {
       onPeerJoined: (role) => {
         if (role === 'receiver' || role === 'download') {
-          setSenderStatus('对方已接入，开始传输…', 'ok');
+          setSenderStatus('对方已连接，开始传输…', 'ok');
           maybeStart();
         }
       },
       onPeerLeft: () => {
-        if (!finished) setSenderStatus('对方已离开。链接依然有效，等他再打开一次即可。', 'warn');
+        if (!finished) setSenderStatus('对方已离开，链接仍然有效。', 'warn');
       },
       onPayload: (payload) => {
         rtc?.handleSignal(payload).catch(() => {});
       },
       onClose: () => {
-        if (!finished) setSenderStatus('信令连接已断开，请刷新页面重新等待。', 'danger');
+        if (!finished) setSenderStatus('连接已断开，请刷新页面重新等待。', 'danger');
       },
     },
   });
@@ -419,7 +413,7 @@ async function startP2PSession(share) {
   }
 
   async function sendFiles() {
-    setSenderStatus('正在尝试浏览器直连（P2P）…');
+    setSenderStatus('正在连接对方…');
 
     const progress = $('progress');
     const progressText = $('progress-text');
@@ -443,7 +437,7 @@ async function startP2PSession(share) {
       const offer = await rtc.createOffer();
       signaling.send({ k: 'sdp', sdp: offer });
       await Promise.race([rtc.waitForChannel(CHANNEL_TIMEOUT_MS), failure]);
-      setSenderStatus('已建立浏览器直连：文件不经过服务器。', 'ok');
+      setSenderStatus('已连接对方，开始传输…', 'ok');
 
       const total = state.files.reduce((sum, item) => sum + item.size, 0);
       const startedAt = Date.now();
@@ -468,7 +462,7 @@ async function startP2PSession(share) {
     } catch (err) {
       rtc.close();
       rtc = null;
-      setSenderStatus(`直连不可用（${err.message}），改用服务器内存转发，文件依旧不落盘。`, 'warn');
+      setSenderStatus('直接连接失败，改为经服务器转发（不会保存文件）…', 'warn');
     }
 
     signaling.send({ k: 'path', path: PATH.RELAY });
@@ -498,7 +492,7 @@ async function startP2PSession(share) {
       }
       finished = true;
       progressText.textContent = `已传送 ${formatBytes(sentBytes)}`;
-      setSenderStatus('全部文件已送达对方（经服务器内存转发，未写入磁盘），可以关闭页面了。', 'ok');
+      setSenderStatus('全部文件已送达对方，可以关闭页面了。', 'ok');
     } catch (err) {
       setSenderStatus(`转发失败：${err.message}`, 'danger');
     }

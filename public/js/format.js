@@ -43,7 +43,7 @@ export function describeKind(kind) {
 }
 
 export function describeMode(mode) {
-  return mode === 'p2p' ? 'P2P 直传' : '暂存';
+  return mode === 'p2p' ? 'P2P 直传' : '暂存到服务器';
 }
 
 /** 进度文案 */

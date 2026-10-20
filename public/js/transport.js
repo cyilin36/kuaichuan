@@ -37,7 +37,7 @@ export function createSignaling({ shareId, role, token, handlers = {} }) {
     readyResolve = resolve;
     readyReject = reject;
   });
-  const timer = setTimeout(() => readyReject(new Error('信令连接超时')), 10_000);
+  const timer = setTimeout(() => readyReject(new Error('连接超时')), 10_000);
 
   socket.addEventListener('message', (event) => {
     let message;
@@ -70,7 +70,7 @@ export function createSignaling({ shareId, role, token, handlers = {} }) {
 
   socket.addEventListener('error', () => {
     clearTimeout(timer);
-    readyReject(new Error('信令连接失败'));
+    readyReject(new Error('连接失败'));
   });
 
   socket.addEventListener('close', () => {
@@ -128,7 +128,7 @@ export class RtcPeer {
     channel.bufferedAmountLowThreshold = LOW_WATER;
     channel.addEventListener('open', () => this.handlers.onOpen?.());
     channel.addEventListener('close', () => this.handlers.onClose?.());
-    channel.addEventListener('error', () => this.handlers.onError?.(new Error('数据通道异常')));
+    channel.addEventListener('error', () => this.handlers.onError?.(new Error('传输异常')));
     channel.addEventListener('message', (event) => this.handlers.onData?.(event.data));
   }
 
@@ -142,7 +142,7 @@ export class RtcPeer {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.channel?.removeEventListener('open', onOpen);
-        reject(new Error('数据通道建立超时'));
+        reject(new Error('连接超时'));
       }, timeoutMs);
       function onOpen() {
         clearTimeout(timer);
@@ -150,7 +150,7 @@ export class RtcPeer {
       }
       if (!this.channel) {
         clearTimeout(timer);
-        reject(new Error('数据通道未创建'));
+        reject(new Error('连接尚未建立'));
         return;
       }
       this.channel.addEventListener('open', onOpen, { once: true });
@@ -193,7 +193,7 @@ export class RtcPeer {
   /** 发送一块数据，必要时等待缓冲区回落 */
   async send(buffer) {
     const channel = this.channel;
-    if (!channel || channel.readyState !== 'open') throw new Error('数据通道未就绪');
+    if (!channel || channel.readyState !== 'open') throw new Error('连接尚未就绪');
     if (channel.bufferedAmount > HIGH_WATER) {
       await new Promise((resolve) => {
         const onLow = () => {
@@ -271,7 +271,7 @@ export function postViaRelay({ shareId, idx, token, body, onProgress, contentTyp
       error.status = xhr.status;
       reject(error);
     });
-    xhr.addEventListener('error', () => reject(new Error('中继发送失败：网络错误')));
+    xhr.addEventListener('error', () => reject(new Error('发送失败：网络错误')));
     xhr.addEventListener('abort', () => reject(new Error('已取消')));
     xhr.send(body);
   });

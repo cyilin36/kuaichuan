@@ -86,17 +86,17 @@ async function unlock(password) {
     await renderContent();
   } catch (err) {
     if (err.status === 403) {
-      $('unlock-error').textContent = '密码不对，再试一次';
+      $('unlock-error').textContent = '密码错误，请重试。';
       $('password-input').select();
       return;
     }
     if (err.status === 410) {
-      setStatus('这个分享已经失效了。', 'danger');
+      setStatus('该分享已失效。', 'danger');
       $('unlock-card').hidden = true;
       return;
     }
     if (err.status === 404) {
-      setStatus('没有找到这个分享，链接可能拼错了。', 'danger');
+      setStatus('未找到该分享，请检查链接是否正确。', 'danger');
       $('unlock-card').hidden = true;
       return;
     }
@@ -122,9 +122,9 @@ async function renderContent() {
   $('content-meta').textContent = meta.join(' · ');
 
   $('notices').replaceChildren();
-  if (share.burnAfterRead) notice('阅后即焚：内容被取走后立即销毁，只能取一次。', 'warn');
+  if (share.burnAfterRead) notice('阅后即焚，仅可查看一次。', 'warn');
   if (share.maxDownloads) notice(`最多可被取走 ${share.maxDownloads} 次${share.downloadsLeft === null ? '' : `（剩余 ${share.downloadsLeft} 次）`}。`, 'warn');
-  if (share.mode === 'p2p') notice('这是 P2P 分享：发送方必须保持页面打开。', '');
+  if (share.mode === 'p2p') notice('需要发送方保持页面开启。', '');
   $('content-title').focus({ preventScroll: true });
 
   if (share.kind === 'text') {
@@ -152,7 +152,7 @@ async function loadTextStaged() {
     const text = await response.text();
     $('text-view').textContent = text;
     renderTextActions(text);
-    if (state.share.burnAfterRead) notice('这条文字已在你打开时被销毁。', 'danger');
+    if (state.share.burnAfterRead) notice('该文字已失效。', 'danger');
   } catch (err) {
     $('text-view').textContent = '';
     setStatus(`读取失败：${err.message}`, 'danger');
@@ -171,7 +171,7 @@ function renderTextActions(text) {
       await navigator.clipboard.writeText(text);
       copy.textContent = '已复制 ✓';
     } catch {
-      copy.textContent = '复制失败，请手动选择';
+      copy.textContent = '复制失败，请手动选择文本。';
     }
   });
 
@@ -204,7 +204,7 @@ function startTextReceiver() {
     handlers: {
       onPeerJoined: (role) => {
         if (role === 'sender' || role === 'upload') {
-          notice('发送方已接入，正在接收文字…', 'ok');
+          notice('发送方已连接，正在接收文字…', 'ok');
           receiveOnce();
         }
       },
@@ -213,12 +213,12 @@ function startTextReceiver() {
       },
       onPayload: (payload) => {
         if (payload?.k === 'path' && payload.path === PATH.RELAY) {
-          notice('正在通过服务器内存转发接收（不落盘）…', '');
+          notice('正在经服务器转发接收（不会保存文件）…', '');
           receiveOnce();
         }
       },
       onClose: () => {
-        if (!state.finished) notice('与服务器的连接已断开，请刷新页面。', 'danger');
+        if (!state.finished) notice('连接已断开，请刷新页面。', 'danger');
       },
     },
   });
@@ -241,7 +241,7 @@ function startTextReceiver() {
         $('text-view').textContent = text;
         renderTextActions(text);
         notice('文字已接收。', 'ok');
-        if (share.burnAfterRead) notice('这条文字已被销毁，无法再次获取。', 'danger');
+        if (share.burnAfterRead) notice('该文字已失效，无法再次查看。', 'danger');
         return;
       } catch (err) {
         if (attempt === 3) {
@@ -261,7 +261,7 @@ function startTextReceiver() {
         receiveOnce();
       }
     })
-    .catch((err) => notice(`信令连接失败：${err.message}`, 'danger'));
+    .catch((err) => notice(`连接失败：${err.message}`, 'danger'));
 }
 
 // ------------------------------- 文件：暂存 -------------------------------
@@ -303,10 +303,6 @@ function renderFilesStaged() {
     single.addEventListener('click', () => downloadOneStaged(idx, file));
     $('file-actions').append(single);
   }
-
-  $('file-hint').textContent = useDirectory
-    ? '提示：浏览器支持直接写入你选择的文件夹，目录结构会保留。'
-    : '提示：文件会逐个保存到浏览器的下载目录。';
 }
 
 function stagedFileUrl(idx) {
@@ -445,14 +441,13 @@ function renderFilesP2P() {
       try {
         await pickDirectory();
       } catch {
-        notice('没有选择文件夹，接收到的文件会落到浏览器下载目录。', 'warn');
+        notice('未选择文件夹，文件将保存至浏览器下载目录。', 'warn');
       }
     }
     startFileReceiver();
   });
   actions.append(start);
 
-  $('file-hint').textContent = '发送方必须保持分享页面打开；接收过程中请不要关闭本页面。';
 }
 
 function startFileReceiver() {
@@ -477,14 +472,14 @@ function startFileReceiver() {
     token: state.token,
     handlers: {
       onPeerJoined: (role) => {
-        if (role === 'sender' || role === 'upload') transferText.textContent = '发送方已接入，正在协商…';
+        if (role === 'sender' || role === 'upload') transferText.textContent = '发送方已连接，正在建立传输…';
       },
       onPeerLeft: () => {
         if (!state.finished) transferText.textContent = '发送方离开了，请让他重新打开分享页面。';
       },
       onPayload: (payload) => handlePayload(payload),
       onClose: () => {
-        if (!state.finished) transferText.textContent = '与服务器的连接已断开，请刷新页面。';
+        if (!state.finished) transferText.textContent = '连接已断开，请刷新页面。';
       },
     },
   });
@@ -492,7 +487,7 @@ function startFileReceiver() {
 
   async function handlePayload(payload) {
     if (payload?.k === 'path' && payload.path === PATH.RELAY) {
-      notice('直连不可用，正在通过服务器内存转发接收（不落盘）…', 'warn');
+      notice('直连失败，正在经服务器转发接收（不会保存文件）…', 'warn');
       await receiveViaRelay();
       return;
     }
@@ -523,11 +518,11 @@ function startFileReceiver() {
         onCandidate: (candidate) => signaling.send({ k: 'candidate', candidate }),
         onOpen: () => {
           transferText.textContent = '已建立直连，正在接收…';
-          notice('当前是浏览器直连，文件不经过服务器。', 'ok');
+          notice('已连接发送方，正在直接接收。', 'ok');
         },
         onData: (data) => onChannelData(data),
         onFailed: () => {
-          transferText.textContent = '直连中断，等待发送方切换到内存转发…';
+          transferText.textContent = '直连中断，等待切换为服务器转发…';
         },
       },
     });
@@ -564,7 +559,7 @@ function startFileReceiver() {
       try {
         return await createFileSystemSink({ directoryHandle: state.directoryHandle, relativePath: file.relPath });
       } catch {
-        notice('写入文件夹失败，改为保存到浏览器下载目录。', 'warn');
+        notice('写入所选文件夹失败，文件将保存至浏览器下载目录。', 'warn');
       }
     }
     const sink = createMemorySink();
@@ -619,20 +614,20 @@ function startFileReceiver() {
 
     state.finished = true;
     progress.value = 100;
-    transferText.textContent = `全部 ${share.files.length} 个文件已接收（经服务器内存转发，未写入服务器磁盘）`;
+    transferText.textContent = `全部 ${share.files.length} 个文件已接收`;
     notice('接收完成。', 'ok');
   }
 
   signaling.ready
     .then(({ peers }) => {
       if (peers.some((role) => role === 'sender' || role === 'upload')) {
-        transferText.textContent = '发送方已在等待，正在协商…';
+        transferText.textContent = '发送方已连接，正在建立传输…';
       } else {
-        transferText.textContent = '等待发送方…（他可以重新打开分享页面）';
+        transferText.textContent = '正在等待发送方打开页面…';
       }
     })
     .catch((err) => {
-      transferText.textContent = `信令连接失败：${err.message}`;
+      transferText.textContent = `连接失败：${err.message}`;
     });
 }
 
@@ -652,7 +647,7 @@ async function init() {
 
   state.shareId = shareIdFromPath();
   if (!state.shareId) {
-    setStatus('链接格式不对。', 'danger');
+    setStatus('链接格式不正确。', 'danger');
     return;
   }
 
@@ -678,8 +673,8 @@ async function init() {
       }
     }
   } catch (err) {
-    if (err.status === 404) setStatus('没有找到这个分享，链接可能拼错了。', 'danger');
-    else if (err.status === 410) setStatus('这个分享已经失效了。', 'danger');
+    if (err.status === 404) setStatus('未找到该分享，请检查链接是否正确。', 'danger');
+    else if (err.status === 410) setStatus('该分享已失效。', 'danger');
     else setStatus(`读取失败：${err.message}`, 'danger');
   }
 }
