@@ -177,7 +177,8 @@ async function init() {
     list.append(await renderItem(record));
   }
 
-  setStatus(`共 ${shares.length} 条本机记录。`);
+  // 列表本身就是记录，不再重复提示条数
+  setStatus('');
 }
 
 init().catch((err) => setStatus(`初始化失败：${err.message}`, 'danger'));

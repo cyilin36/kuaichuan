@@ -296,13 +296,6 @@ textarea:focus-visible {
   line-height: 1.25;
 }
 
-.page-desc {
-  max-width: 62ch;
-  margin-top: 10px;
-  color: var(--text-secondary);
-  font-size: 15px;
-  line-height: 1.65;
-}
 
 /* --------------------------------------------------------------------------
  * 卡片
@@ -1218,9 +1211,6 @@ progress::-moz-progress-bar {
     font-size: 26px;
   }
 
-  .page-desc {
-    font-size: 14px;
-  }
 
   .card {
     padding: 18px 16px;
