@@ -250,13 +250,6 @@ textarea:focus-visible {
   color: var(--text-secondary);
 }
 
-.sidebar-note {
-  margin-top: auto;
-  padding: 8px;
-  color: var(--text-tertiary);
-  font-size: 12px;
-  line-height: 1.5;
-}
 
 .skip-link {
   position: fixed;
@@ -1197,8 +1190,7 @@ progress::-moz-progress-bar {
     overflow-x: auto;
   }
 
-  .nav-label,
-  .sidebar-note {
+  .nav-label {
     display: none;
   }
 
