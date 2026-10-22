@@ -19,7 +19,10 @@ const DEFAULTS = {
   DEFAULT_TTL_HOURS: '24',
   MAX_TTL_HOURS: '168',
   TTL_SWEEP_SECONDS: '60',
+  // 单文件上限按传输方式分开：MAX_FILE_BYTES 只管暂存（上传到服务器），
+  // MAX_P2P_FILE_BYTES 管直接传输；两者都是 0 表示不限制。
   MAX_FILE_BYTES: String(2 * 1024 ** 3),
+  MAX_P2P_FILE_BYTES: '0',
   MAX_TEXT_BYTES: String(1024 * 1024),
   MAX_TOTAL_BYTES: String(20 * 1024 ** 3),
   RELAY_ENABLED: '1',
@@ -111,7 +114,8 @@ export function loadConfig(env = process.env) {
     maxTtlHours,
     sweepSeconds: readInt(env, 'TTL_SWEEP_SECONDS', { min: 5, max: 86_400 }),
 
-    maxFileBytes: readInt(env, 'MAX_FILE_BYTES', { min: 0 }),
+    maxStagedFileBytes: readInt(env, 'MAX_FILE_BYTES', { min: 0 }),
+    maxP2pFileBytes: readInt(env, 'MAX_P2P_FILE_BYTES', { min: 0 }),
     maxTextBytes: readInt(env, 'MAX_TEXT_BYTES', { min: 0 }),
     maxTotalBytes: readInt(env, 'MAX_TOTAL_BYTES', { min: 0 }),
 

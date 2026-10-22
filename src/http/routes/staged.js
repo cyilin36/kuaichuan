@@ -187,7 +187,7 @@ export function registerStagedRoutes(router, { config, logger, services }) {
           stream: req,
           offset,
           expectedSize: file.size,
-          maxBytes: config.maxFileBytes,
+          maxBytes: config.maxStagedFileBytes,
         });
       } catch (err) {
         // 中断/超限后以磁盘上真实残留为准，续传端点才可信

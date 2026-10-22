@@ -28,7 +28,7 @@ export function registerRtcRoutes(router, { config, services }) {
       relayEnabled: config.relayEnabled,
       chunkSize: 64 * 1024,
       bufferedAmountLowThreshold: 1024 * 1024,
-      maxFileBytes: config.maxFileBytes,
+      maxP2pFileBytes: config.maxP2pFileBytes,
       maxTextBytes: config.maxTextBytes,
     });
   });

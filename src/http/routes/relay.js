@@ -137,7 +137,7 @@ export function registerRelayRoutes(router, { config, logger, services }) {
       key,
       upload: side,
       download: peer.ctx,
-      maxBytes: config.maxFileBytes,
+      maxBytes: config.maxP2pFileBytes,
       contentType: peer.ctx.meta?.contentType ?? 'application/octet-stream',
       headers: peer.ctx.meta?.headers ?? {},
     });
@@ -170,7 +170,7 @@ export function registerRelayRoutes(router, { config, logger, services }) {
       key,
       upload: peer.ctx,
       download: side,
-      maxBytes: config.maxFileBytes,
+      maxBytes: config.maxP2pFileBytes,
       contentType: side.meta.contentType,
       headers: side.meta.headers,
     });

@@ -49,6 +49,13 @@ function selectedMode() {
   return document.querySelector('input[name="mode"]:checked')?.value ?? 'p2p';
 }
 
+/** 当前分享方式对应的单文件上限（0 表示不限制） */
+function fileByteLimit() {
+  return selectedMode() === 'staged'
+    ? state.config.maxStagedFileBytes
+    : state.config.maxP2pFileBytes;
+}
+
 // ---------------------------------------------------------------------------
 // 选择文件
 // ---------------------------------------------------------------------------
@@ -100,9 +107,10 @@ function renderFiles() {
   }
   summary.textContent = `已选 ${state.files.length} 个文件，合计 ${formatBytes(total)}`;
 
-  const oversize = state.files.filter((item) => item.size > state.config.maxFileBytes);
+  const limit = fileByteLimit();
+  const oversize = limit > 0 ? state.files.filter((item) => item.size > limit) : [];
   if (oversize.length > 0) {
-    summary.textContent += `　⚠️ 有 ${oversize.length} 个文件超过单文件上限 ${formatBytes(state.config.maxFileBytes)}`;
+    summary.textContent += `　⚠️ 有 ${oversize.length} 个文件超过单个文件上限 ${formatBytes(limit)}`;
     summary.className = 'muted small danger';
   } else {
     summary.className = 'muted small';
@@ -148,8 +156,9 @@ function buildInput() {
 function validate() {
   if (state.kind === 'file') {
     if (state.files.length === 0) return '请先选择要分享的文件。';
-    const oversize = state.files.find((item) => item.size > state.config.maxFileBytes);
-    if (oversize) return `「${oversize.name}」超过单文件上限 ${formatBytes(state.config.maxFileBytes)}`;
+    const limit = fileByteLimit();
+    const oversize = limit > 0 ? state.files.find((item) => item.size > limit) : null;
+    if (oversize) return `「${oversize.name}」超过单个文件上限 ${formatBytes(limit)}`;
   } else {
     const text = $('text-input').value;
     if (text.trim() === '') return '请输入要分享的文字。';
@@ -711,6 +720,10 @@ async function init() {
 
   $('tab-file').addEventListener('click', () => switchKind('file'));
   $('tab-text').addEventListener('click', () => switchKind('text'));
+  // 单文件上限随分享方式不同，切换后立即刷新已选文件的提示
+  for (const radio of document.querySelectorAll('input[name="mode"]')) {
+    radio.addEventListener('change', renderFiles);
+  }
   $('file-input').addEventListener('change', (event) => collectFiles(event.target, false));
   $('dir-input').addEventListener('change', (event) => collectFiles(event.target, true));
   $('text-input').addEventListener('input', updateTextCount);

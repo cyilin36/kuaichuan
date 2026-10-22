@@ -104,7 +104,8 @@ sudo systemctl enable --now kuaichuan
 | `DATA_DIR` | `./data` | 数据目录，存放数据库、已上传的文件与密钥 |
 | `DEFAULT_TTL_HOURS` | `24` | 新建分享的默认保留时长（小时） |
 | `MAX_TTL_HOURS` | `168` | 页面可选的最长保留时长（小时） |
-| `MAX_FILE_BYTES` | `2147483648` | 单个文件上限（字节），默认 2GB |
+| `MAX_FILE_BYTES` | `2147483648` | 上传到服务器时的单个文件上限（字节），默认 2GB；`0` 表示不限制 |
+| `MAX_P2P_FILE_BYTES` | `0` | 直接传输时的单个文件上限（字节），默认 `0` 表示不限制 |
 | `MAX_TEXT_BYTES` | `1048576` | 单条文字上限（字节），默认 1MB |
 | `MAX_TOTAL_BYTES` | `21474836480` | 服务器上保存的文件总量上限（字节），默认 20GB；`0` 表示不限制 |
 | `RELAY_ENABLED` | `1` | 无法直接连接时是否允许经服务器转交；`0` 表示关闭 |

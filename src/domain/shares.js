@@ -90,12 +90,14 @@ export async function createShare({ db, config, logger, input = {} }) {
       throw badRequest(`单个分享最多 ${MAX_FILES_PER_SHARE} 个文件`);
     }
 
+    // 单文件上限按传输方式分开：直接传输只管声明大小，暂存还要受服务器容量约束
+    const fileLimit = mode === 'p2p' ? config.maxP2pFileBytes : config.maxStagedFileBytes;
     files = input.files.map((file, idx) => {
       const relPath = safeRelPath(file?.relPath ?? file?.name ?? '');
       const size = Number(file?.size ?? 0);
       if (!Number.isInteger(size) || size < 0) throw badRequest('文件大小不合法');
-      if (config.maxFileBytes > 0 && size > config.maxFileBytes) {
-        throw badRequest(`单个文件不能超过 ${config.maxFileBytes} 字节`);
+      if (fileLimit > 0 && size > fileLimit) {
+        throw badRequest(`单个文件不能超过 ${fileLimit} 字节`);
       }
       return {
         idx,

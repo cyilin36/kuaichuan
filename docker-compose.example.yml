@@ -27,7 +27,8 @@ services:
       # 暂存分享的保留时长与上限
       DEFAULT_TTL_HOURS: "24"
       MAX_TTL_HOURS: "168"
-      MAX_FILE_BYTES: "2147483648"      # 单文件 2GB
+      MAX_FILE_BYTES: "2147483648"      # 上传到服务器的单文件 2GB
+      MAX_P2P_FILE_BYTES: "0"           # 直接传输的单文件上限，0 表示不限制
       MAX_TEXT_BYTES: "1048576"         # 单条文字 1MB
       MAX_TOTAL_BYTES: "21474836480"    # 暂存总量 20GB，0 表示不限制
 
