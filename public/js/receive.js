@@ -24,6 +24,7 @@ const state = {
   token: null,
   directoryHandle: null,
   signaling: null,
+  receiveButton: null,
   rtc: null,
   receiving: false,
   finished: false,
@@ -203,6 +204,7 @@ function startTextReceiver() {
     token: state.token,
     handlers: {
       onPeerJoined: (role) => {
+        if (state.finished) return;
         if (role === 'sender' || role === 'upload') {
           notice('发送方已连接，正在接收文字…', 'ok');
           receiveOnce();
@@ -212,6 +214,7 @@ function startTextReceiver() {
         if (!state.finished) $('text-view').textContent = '发送方离开了，请让他重新打开分享页面。';
       },
       onPayload: (payload) => {
+        if (state.finished) return;
         if (payload?.k === 'path' && payload.path === PATH.RELAY) {
           notice('正在由服务器转交接收（不会保存到服务器）…', '');
           receiveOnce();
@@ -256,6 +259,7 @@ function startTextReceiver() {
 
   signaling.ready
     .then(({ peers }) => {
+      if (state.finished) return;
       if (peers.some((role) => role === 'sender' || role === 'upload')) {
         notice('发送方已在等待，正在接收文字…', 'ok');
         receiveOnce();
@@ -436,7 +440,7 @@ function renderFilesP2P() {
   start.textContent = supportsDirectoryPicker() ? '选择文件夹并开始接收' : '开始接收';
   start.addEventListener('click', async () => {
     start.disabled = true;
-    start.textContent = '等待发送方…';
+    start.textContent = '正在连接发送方…';
     if (supportsDirectoryPicker()) {
       try {
         await pickDirectory();
@@ -447,7 +451,7 @@ function renderFilesP2P() {
     startFileReceiver();
   });
   actions.append(start);
-
+  state.receiveButton = start;
 }
 
 function startFileReceiver() {
@@ -459,9 +463,33 @@ function startFileReceiver() {
   progress.value = 0;
   transferText.textContent = '正在连接发送方…';
 
+  function setReceiverAction(text) {
+    if (!state.receiveButton) return;
+    state.receiveButton.disabled = true;
+    state.receiveButton.textContent = text;
+  }
+
+  function finishReceive() {
+    if (state.finished) return;
+    state.finished = true;
+    progress.value = 100;
+    transferText.textContent = `全部 ${share.files.length} 个文件已接收`;
+    setReceiverAction('接收完成');
+    notice('接收完成。', 'ok');
+  }
+
+  function failReceive(message) {
+    if (state.finished) return;
+    state.finished = true;
+    transferText.textContent = message;
+    setReceiverAction('接收失败');
+  }
+
   const totalBytes = share.files.reduce((sum, file) => sum + file.size, 0);
   const startedAt = Date.now();
   let receivedBytes = 0;
+  let completedFiles = 0;
+  let transferStarted = false;
   let currentSink = null;
   let currentFile = null;
   const memorySinks = new Map();
@@ -472,20 +500,28 @@ function startFileReceiver() {
     token: state.token,
     handlers: {
       onPeerJoined: (role) => {
-        if (role === 'sender' || role === 'upload') transferText.textContent = '发送方已连接，正在建立传输…';
+        if (state.finished || transferStarted) return;
+        if (role === 'sender' || role === 'upload') {
+          transferText.textContent = '发送方已连接，正在建立传输…';
+          setReceiverAction('正在建立传输…');
+        }
       },
       onPeerLeft: () => {
-        if (!state.finished) transferText.textContent = '发送方离开了，请让他重新打开分享页面。';
+        if (!state.finished) {
+          transferText.textContent = '发送方离开了，请让他重新打开分享页面。';
+          setReceiverAction('发送方已离开');
+        }
       },
       onPayload: (payload) => handlePayload(payload),
       onClose: () => {
-        if (!state.finished) transferText.textContent = '连接已断开，请刷新页面。';
+        if (!state.finished) failReceive('连接已断开，请刷新页面重试。');
       },
     },
   });
   state.signaling = signaling;
 
   async function handlePayload(payload) {
+    if (state.finished) return;
     if (payload?.k === 'path' && payload.path === PATH.RELAY) {
       notice('无法直接连接，正在由服务器转交接收（不会保存到服务器）…', 'warn');
       await receiveViaRelay();
@@ -498,7 +534,7 @@ function startFileReceiver() {
       const answer = await state.rtc?.handleSignal(payload);
       if (answer) signaling.send({ k: 'sdp', sdp: answer });
     } catch {
-      transferText.textContent = '连接失败，请刷新页面重试。';
+      failReceive('连接失败，请刷新页面重试。');
     }
   }
 
@@ -517,11 +553,15 @@ function startFileReceiver() {
       handlers: {
         onCandidate: (candidate) => signaling.send({ k: 'candidate', candidate }),
         onOpen: () => {
+          if (state.finished) return;
+          transferStarted = true;
           transferText.textContent = '已直接连接，正在接收…';
+          setReceiverAction('正在接收…');
           notice('已连接发送方，正在直接接收。', 'ok');
         },
         onData: (data) => onChannelData(data),
         onFailed: () => {
+          if (state.finished) return;
           transferText.textContent = '直接连接中断，正在改为由服务器转交…';
         },
       },
@@ -532,6 +572,7 @@ function startFileReceiver() {
   }
 
   async function onChannelData(data) {
+    if (state.finished) return;
     if (typeof data === 'string') {
       const message = JSON.parse(data);
       if (message.k === 'file') {
@@ -540,8 +581,15 @@ function startFileReceiver() {
         currentSink = await makeSink(message.idx, currentFile);
         transferText.textContent = `正在接收 ${currentFile.relPath}…`;
       } else if (message.k === 'end') {
-        await finishSink(message.idx, currentFile);
+        // 先摘下当前文件的引用，避免关闭旧 sink 的异步过程被下一个文件打断。
+        const sink = currentSink;
+        const file = currentFile;
         currentSink = null;
+        currentFile = null;
+        await finishSink(message.idx, file, sink);
+        completedFiles += 1;
+        // 直连没有额外的结束信号，按收到的文件数判断整次接收是否完成。
+        if (completedFiles >= share.files.length) finishReceive();
       }
       return;
     }
@@ -567,7 +615,7 @@ function startFileReceiver() {
     return sink;
   }
 
-  async function finishSink(idx, file) {
+  async function finishSink(idx, file, sink) {
     if (!file) return;
     const memory = memorySinks.get(idx);
     if (memory) {
@@ -576,12 +624,14 @@ function startFileReceiver() {
       return;
     }
     // FSA 的 sink 在最后关闭
-    if (currentSink?.kind === 'fs') await currentSink.close();
+    if (sink?.kind === 'fs') await sink.close();
   }
 
   async function receiveViaRelay() {
     progress.value = 0;
     receivedBytes = 0;
+    transferStarted = true;
+    setReceiverAction('正在接收…');
 
     for (const [idx, file] of share.files.entries()) {
       try {
@@ -607,27 +657,27 @@ function startFileReceiver() {
         }
         receivedBytes += result.received;
       } catch (err) {
-        transferText.textContent = `「${file.relPath}」接收失败：${err.message}`;
+        failReceive(`「${file.relPath}」接收失败：${err.message}`);
         return;
       }
     }
 
-    state.finished = true;
-    progress.value = 100;
-    transferText.textContent = `全部 ${share.files.length} 个文件已接收`;
-    notice('接收完成。', 'ok');
+    finishReceive();
   }
 
   signaling.ready
     .then(({ peers }) => {
+      if (state.finished || transferStarted) return;
       if (peers.some((role) => role === 'sender' || role === 'upload')) {
         transferText.textContent = '发送方已连接，正在建立传输…';
+        setReceiverAction('正在建立传输…');
       } else {
         transferText.textContent = '正在等待发送方打开页面…';
+        setReceiverAction('等待发送方…');
       }
     })
-    .catch((err) => {
-      transferText.textContent = `连接失败：${err.message}`;
+    .catch(() => {
+      failReceive('连接失败，请刷新页面重试。');
     });
 }
 
