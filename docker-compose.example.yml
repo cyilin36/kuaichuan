@@ -5,6 +5,12 @@
 #   docker compose up -d
 #   打开 http://localhost:7654
 #
+# 默认从 GitHub Container Registry 拉取发布镜像。更新时执行：
+#   docker compose pull && docker compose up -d
+# 若提示未授权，请先执行 docker login ghcr.io。
+#
+# 想改用本地源码构建，取消下面 build 行的注释，并把 image 改成 kuaichuan:local。
+#
 # 想改端口 / 有效期 / 容量，直接改下面的 environment。
 #
 # 部署不需要 sudo：容器启动时会先修正数据目录的属主，再降权到非 root 用户运行，
@@ -12,8 +18,8 @@
 
 services:
   kuaichuan:
-    build: .
-    image: kuaichuan:latest
+    image: ghcr.io/cyilin36/kuaichuan:latest
+    # build: .
     container_name: kuaichuan
     restart: unless-stopped
     ports:
