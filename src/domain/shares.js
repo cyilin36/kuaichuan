@@ -54,7 +54,7 @@ export function createShareId(db) {
  * 创建分享。
  * @returns {Promise<object>} 含一次性返回的明文密码与 ownerToken
  */
-export async function createShare({ db, config, logger, input = {}, requestOrigin = '' }) {
+export async function createShare({ db, config, logger, input = {} }) {
   const kind = String(input.kind ?? '');
   if (kind !== 'file' && kind !== 'text') throw badRequest('kind 只能是 file 或 text');
 
@@ -133,11 +133,6 @@ export async function createShare({ db, config, logger, input = {}, requestOrigi
     passwordSalt = hashed.salt;
   }
 
-  const baseUrl = normalizeOrigin(input.baseUrl)
-    ?? normalizeOrigin(config.baseUrl)
-    ?? normalizeOrigin(requestOrigin)
-    ?? `http://localhost:${config.port}`;
-
   const expiresAt = now + ttlHours * 3_600_000;
   const totalBytes = kind === 'file' ? files.reduce((sum, file) => sum + file.size, 0) : textBytes;
 
@@ -147,7 +142,6 @@ export async function createShare({ db, config, logger, input = {}, requestOrigi
     mode,
     title,
     status: 'waiting',
-    baseUrl,
     passwordHash,
     passwordSalt,
     ownerHash: hashToken(ownerToken),
@@ -174,8 +168,6 @@ export async function createShare({ db, config, logger, input = {}, requestOrigi
     kind,
     mode,
     title,
-    url: `${baseUrl}/s/${id}`,
-    baseUrl,
     ttlHours,
     expiresAt,
     requiresPassword: usePassword,
@@ -292,8 +284,6 @@ export function publicMetadata({ share, files, role, senderOnline = null, now = 
     downloadsLeft: share.maxDownloads === null ? null : Math.max(0, share.maxDownloads - share.downloads),
     burnAfterRead: share.burnAfterRead,
     totalBytes: share.totalBytes,
-    baseUrl: share.baseUrl,
-    url: share.baseUrl ? `${share.baseUrl}/s/${share.id}` : `/s/${share.id}`,
     requiresPassword: Boolean(share.passwordHash),
     viewer: role ?? null,
     senderOnline: share.mode === 'p2p' ? senderOnline : null,

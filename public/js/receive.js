@@ -147,7 +147,7 @@ async function loadTextStaged() {
     const response = await fetch(`/api/shares/${state.shareId}/text`, { headers: authHeaders() });
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
-      throw Object.assign(new Error(data.message ?? `读取失败（HTTP ${response.status}）`), { status: response.status });
+      throw Object.assign(new Error(data.message ?? '读取失败，请稍后重试。'), { status: response.status });
     }
     const text = await response.text();
     $('text-view').textContent = text;
@@ -213,7 +213,7 @@ function startTextReceiver() {
       },
       onPayload: (payload) => {
         if (payload?.k === 'path' && payload.path === PATH.RELAY) {
-          notice('正在经服务器转发接收（不会保存文件）…', '');
+          notice('正在由服务器转交接收（不会保存到服务器）…', '');
           receiveOnce();
         }
       },
@@ -234,7 +234,7 @@ function startTextReceiver() {
         const response = await fetch(`/api/relay/${share.id}/text`, { headers: authHeaders() });
         if (!response.ok) {
           const data = await response.json().catch(() => ({}));
-          throw Object.assign(new Error(data.message ?? `接收失败（HTTP ${response.status}）`), { status: response.status });
+          throw Object.assign(new Error(data.message ?? '接收失败，请稍后重试。'), { status: response.status });
         }
         const text = await response.text();
         state.finished = true;
@@ -327,12 +327,12 @@ async function downloadOneStaged(idx, file) {
   try {
     if (!sink) {
       const response = await fetch(stagedFileUrl(idx), { headers: authHeaders() });
-      if (!response.ok) throw new Error(`下载失败（HTTP ${response.status}）`);
+      if (!response.ok) throw new Error('下载失败，请稍后重试。');
       const blob = await response.blob();
       saveBlob(blob, file.name);
     } else {
       const response = await fetch(stagedFileUrl(idx), { headers: authHeaders() });
-      if (!response.ok) throw new Error(`下载失败（HTTP ${response.status}）`);
+      if (!response.ok) throw new Error('下载失败，请稍后重试。');
       const reader = response.body.getReader();
       let received = 0;
       for (;;) {
@@ -371,7 +371,7 @@ async function downloadAllStaged(useDirectory) {
   for (const [idx, file] of share.files.entries()) {
     try {
       const response = await fetch(stagedFileUrl(idx), { headers: authHeaders() });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) throw new Error('下载失败，请稍后重试。');
 
       if (directory) {
         const sink = await createFileSystemSink({ directoryHandle: directory, relativePath: file.relPath });
@@ -487,7 +487,7 @@ function startFileReceiver() {
 
   async function handlePayload(payload) {
     if (payload?.k === 'path' && payload.path === PATH.RELAY) {
-      notice('直连失败，正在经服务器转发接收（不会保存文件）…', 'warn');
+      notice('无法直接连接，正在由服务器转交接收（不会保存到服务器）…', 'warn');
       await receiveViaRelay();
       return;
     }
@@ -497,8 +497,8 @@ function startFileReceiver() {
     try {
       const answer = await state.rtc?.handleSignal(payload);
       if (answer) signaling.send({ k: 'sdp', sdp: answer });
-    } catch (err) {
-      transferText.textContent = `协商失败：${err.message}`;
+    } catch {
+      transferText.textContent = '连接失败，请刷新页面重试。';
     }
   }
 
@@ -517,12 +517,12 @@ function startFileReceiver() {
       handlers: {
         onCandidate: (candidate) => signaling.send({ k: 'candidate', candidate }),
         onOpen: () => {
-          transferText.textContent = '已建立直连，正在接收…';
+          transferText.textContent = '已直接连接，正在接收…';
           notice('已连接发送方，正在直接接收。', 'ok');
         },
         onData: (data) => onChannelData(data),
         onFailed: () => {
-          transferText.textContent = '直连中断，等待切换为服务器转发…';
+          transferText.textContent = '直接连接中断，正在改为由服务器转交…';
         },
       },
     });
@@ -679,4 +679,4 @@ async function init() {
   }
 }
 
-init().catch((err) => setStatus(`初始化失败：${err.message}`, 'danger'));
+init().catch(() => setStatus('页面加载失败，请刷新重试。', 'danger'));

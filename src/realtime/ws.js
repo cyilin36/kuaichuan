@@ -13,7 +13,7 @@ import { createSignalingHub, isSenderRole, isValidRole } from './signaling.js';
 
 const HEARTBEAT_MS = 30_000;
 
-export function attachWebSocket({ server, config, logger, services }) {
+export function attachWebSocket({ server, logger, services }) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 512 * 1024 });
   const hub = createSignalingHub({ logger, services });
 
@@ -21,9 +21,7 @@ export function attachWebSocket({ server, config, logger, services }) {
     if (!origin) return true; // 非浏览器客户端（脚本/测试）不会带 Origin
     try {
       const originHost = new URL(origin).host;
-      if (originHost === req.headers.host) return true;
-      if (config.baseUrl && new URL(config.baseUrl).host === originHost) return true;
-      return false;
+      return originHost === req.headers.host;
     } catch {
       return false;
     }

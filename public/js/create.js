@@ -8,7 +8,7 @@
  */
 
 import {
-  apiJson, loadNetworkCandidates, loadPublicConfig, saveLocalShare,
+  apiJson, loadPublicConfig, saveLocalShare,
 } from './api.js';
 import { describeProgress, formatBytes } from './format.js';
 import {
@@ -21,10 +21,12 @@ const state = {
   config: null,
   kind: 'file',
   files: [],
-  origins: [],
-  origin: '',
   share: null,
 };
+
+function shareUrl() {
+  return state.share ? `${window.location.origin}/s/${state.share.id}` : '';
+}
 
 function setStatus(text, tone = '') {
   const el = $('create-status');
@@ -125,7 +127,6 @@ function buildInput() {
     ttlHours,
     password: $('password-toggle').checked,
     burnAfterRead: $('burn-toggle').checked,
-    baseUrl: state.origin,
     ...(maxDownloadsRaw === '' ? {} : { maxDownloads: Number(maxDownloadsRaw) }),
   };
 
@@ -179,7 +180,6 @@ async function onCreate() {
       kind: created.kind,
       mode: created.mode,
       title: created.title,
-      url: created.url,
       password: created.password,
       ownerToken: created.ownerToken,
       requiresPassword: created.requiresPassword,
@@ -211,7 +211,7 @@ async function onCreate() {
 function renderResult(share) {
   $('result').hidden = false;
 
-  const url = `${state.origin}/s/${share.id}`;
+  const url = shareUrl();
   $('share-url').textContent = url;
   $('open-url').href = url;
 
@@ -230,10 +230,11 @@ function renderResult(share) {
 function updateQr() {
   const share = state.share;
   if (!share) return;
-  const url = `${state.origin}/s/${share.id}`;
+  const url = shareUrl();
   $('share-url').textContent = url;
   $('open-url').href = url;
-  $('qr-img').src = `/api/shares/${share.id}/qr.svg?origin=${encodeURIComponent(state.origin)}&t=${encodeURIComponent(share.ownerToken)}`;
+  const origin = encodeURIComponent(window.location.origin);
+  $('qr-img').src = `/api/shares/${share.id}/qr.svg?origin=${origin}&t=${encodeURIComponent(share.ownerToken)}`;
 }
 
 function renderNextSteps(share) {
@@ -277,7 +278,7 @@ function putStagedFile({ shareId, idx, token, file, onProgress }) {
         resolve(data);
         return;
       }
-      reject(new Error(data?.message ?? `上传失败（HTTP ${xhr.status}）`));
+      reject(new Error(data?.message ?? '上传失败，请稍后重试。'));
     });
     xhr.addEventListener('error', () => reject(new Error('上传失败：网络错误')));
     xhr.addEventListener('abort', () => reject(new Error('上传已取消')));
@@ -429,7 +430,7 @@ async function startP2PSession(share) {
       role: 'sender',
       handlers: {
         ...attachRtcHandlers(),
-        onFailed: () => rejectOnFailure(new Error('直连失败')),
+        onFailed: () => rejectOnFailure(new Error('直接连接失败')),
       },
     });
 
@@ -462,7 +463,7 @@ async function startP2PSession(share) {
     } catch (err) {
       rtc.close();
       rtc = null;
-      setSenderStatus('直接连接失败，改为经服务器转发（不会保存文件）…', 'warn');
+      setSenderStatus('无法直接连接，改为由服务器转交（不会保存到服务器）…', 'warn');
     }
 
     signaling.send({ k: 'path', path: PATH.RELAY });
@@ -494,7 +495,7 @@ async function startP2PSession(share) {
       progressText.textContent = `已传送 ${formatBytes(sentBytes)}`;
       setSenderStatus('全部文件已送达对方，可以关闭页面了。', 'ok');
     } catch (err) {
-      setSenderStatus(`转发失败：${err.message}`, 'danger');
+      setSenderStatus(`发送失败：${err.message}`, 'danger');
     }
   }
 }
@@ -528,32 +529,12 @@ function fillTtlOptions() {
   }
 }
 
-function fillOrigins() {
-  const select = $('origin-select');
-  select.replaceChildren();
-
-  const candidates = state.origins.length > 0
-    ? state.origins
-    : [{ url: window.location.origin, label: '当前访问的地址' }];
-
-  state.origin = candidates[0].url;
-  for (const candidate of candidates) {
-    const option = document.createElement('option');
-    option.value = candidate.url;
-    option.textContent = `${candidate.url}（${candidate.label}）`;
-    select.append(option);
-  }
-  select.value = state.origin;
-}
-
 async function init() {
   state.config = await loadPublicConfig();
   $('app-name').textContent = state.config.appName;
   document.title = `${state.config.appName} · 分享文件与文字`;
 
   fillTtlOptions();
-  state.origins = await loadNetworkCandidates();
-  fillOrigins();
   updateQr();
   updateTextCount();
 
@@ -564,13 +545,8 @@ async function init() {
   $('text-input').addEventListener('input', updateTextCount);
   $('create-btn').addEventListener('click', onCreate);
 
-  $('origin-select').addEventListener('change', (event) => {
-    state.origin = event.target.value;
-    updateQr();
-  });
-
   $('copy-url').addEventListener('click', () => {
-    navigator.clipboard?.writeText(`${state.origin}/s/${state.share?.id ?? ''}`);
+    navigator.clipboard?.writeText(shareUrl());
     setStatus('链接已复制', 'ok');
   });
   $('copy-password').addEventListener('click', () => {
@@ -579,4 +555,4 @@ async function init() {
   });
 }
 
-init().catch((err) => setStatus(`初始化失败：${err.message}`, 'danger'));
+init().catch(() => setStatus('页面加载失败，请刷新重试。', 'danger'));

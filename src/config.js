@@ -14,7 +14,6 @@ const DEFAULTS = {
   APP_NAME: '快传',
   PORT: '7654',
   HOST: '0.0.0.0',
-  BASE_URL: '',
   DATA_DIR: './data',
   ALLOW_EXTERNAL_DATA_DIR: '0',
   DEFAULT_TTL_HOURS: '24',
@@ -95,11 +94,6 @@ export function loadConfig(env = process.env) {
     throw configError(`LOG_LEVEL 必须是 ${[...LOG_LEVELS].join(' / ')} 之一`);
   }
 
-  const baseUrlRaw = readString(env, 'BASE_URL').replace(/\/+$/, '');
-  if (baseUrlRaw !== '' && !/^https?:\/\/[^\s]+$/.test(baseUrlRaw)) {
-    throw configError('BASE_URL 必须是 http(s):// 开头的地址，或留空');
-  }
-
   return Object.freeze({
     appName: readString(env, 'APP_NAME'),
     version: pkg.version,
@@ -108,7 +102,6 @@ export function loadConfig(env = process.env) {
 
     port: readInt(env, 'PORT', { min: 0, max: 65535 }),
     host: readString(env, 'HOST'),
-    baseUrl: baseUrlRaw,
 
     dataDir,
     allowExternalDataDir,

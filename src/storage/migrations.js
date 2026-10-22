@@ -61,6 +61,13 @@ const MIGRATIONS = [
       CREATE INDEX idx_events_at ON events (at);
     `,
   },
+  {
+    // 分享链接由前端按浏览器当前地址拼接，服务端不再需要、也不再保存固定地址。
+    version: 2,
+    up: `
+      ALTER TABLE shares DROP COLUMN base_url;
+    `,
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

@@ -28,10 +28,10 @@ async function revoke(record, onDone) {
   } catch (err) {
     if (err.status === 404 || err.status === 410) {
       removeLocalShare(record.id);
-      onDone('该分享已失效，已从本机记录中移除。');
+      onDone('该分享已失效，已从这台设备的记录中移除。');
       return;
     }
-    onDone(`作废失败：${err.message}`);
+    onDone(`无法作废：${err.message}`);
   }
 }
 
@@ -70,10 +70,12 @@ async function renderItem(record) {
 
   const link = document.createElement('a');
   link.className = 'mono small';
-  link.href = record.url ?? `/s/${record.id}`;
+  // 链接一律按当前浏览器地址重建，旧记录里的 url 可能带着历史配置，不能再用。
+  const shareUrl = `${window.location.origin}/s/${record.id}`;
+  link.href = shareUrl;
   link.target = '_blank';
   link.rel = 'noreferrer';
-  link.textContent = record.url ?? `/s/${record.id}`;
+  link.textContent = shareUrl;
   linkRow.append(link);
 
   if (record.password) {
@@ -109,7 +111,7 @@ async function renderItem(record) {
 
   const forgetButton = document.createElement('button');
   forgetButton.className = 'tiny';
-  forgetButton.textContent = '仅删除本机记录';
+  forgetButton.textContent = '仅删除这台设备的记录';
   forgetButton.addEventListener('click', () => {
     removeLocalShare(record.id);
     wrapper.remove();
@@ -144,7 +146,7 @@ async function renderItem(record) {
       revokeButton.disabled = true;
       revokeButton.textContent = '已失效';
     } else {
-      stateLine.textContent = `状态查询失败：${err.message}`;
+      stateLine.textContent = '暂时无法获取状态，请稍后重试。';
       stateLine.className = 'small danger';
     }
   }
@@ -159,7 +161,7 @@ async function init() {
 
   const shares = listLocalShares();
   if (shares.length === 0) {
-    setStatus('本机暂无分享记录，可前往首页创建。');
+    setStatus('这台设备还没有分享记录，可前往首页创建。');
     return;
   }
 
@@ -169,7 +171,7 @@ async function init() {
     if (!window.confirm('仅清空这台设备上的记录，已创建的分享仍然有效。是否继续？')) return;
     for (const record of listLocalShares()) removeLocalShare(record.id);
     $('list').replaceChildren();
-    setStatus('本机记录已清空。');
+    setStatus('这台设备的记录已清空。');
   });
 
   const list = $('list');
@@ -181,4 +183,4 @@ async function init() {
   setStatus('');
 }
 
-init().catch((err) => setStatus(`初始化失败：${err.message}`, 'danger'));
+init().catch(() => setStatus('页面加载失败，请刷新重试。', 'danger'));

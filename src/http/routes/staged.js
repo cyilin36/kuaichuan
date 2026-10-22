@@ -104,7 +104,7 @@ export function registerStagedRoutes(router, { config, logger, services }) {
 
     if (share.kind !== 'file') throw badRequest('该分享不是文件分享');
     if (share.mode !== 'staged') {
-      throw conflict('P2P 分享的文件不经过服务器，请回到分享页面用浏览器直连获取');
+      throw conflict('该分享的文件不经过服务器，请回到分享页面下载');
     }
 
     const idx = assertIndex(params.idx);

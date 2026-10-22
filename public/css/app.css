@@ -623,18 +623,6 @@ button.primary:active,
   cursor: pointer;
 }
 
-
-
-.mode-title {
-  display: block;
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.5;
-}
-
-
-
 .panel {
   margin-top: 20px;
 }
@@ -899,10 +887,6 @@ li:focus-within > .drag-handle,
 .qr-side {
   flex: 1 1 220px;
   min-width: 0;
-}
-
-.qr-side .field:last-child {
-  margin-bottom: 0;
 }
 
 .notice {

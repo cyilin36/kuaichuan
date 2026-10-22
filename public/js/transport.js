@@ -267,7 +267,7 @@ export function postViaRelay({ shareId, idx, token, body, onProgress, contentTyp
         resolve(data);
         return;
       }
-      const error = new Error(data?.message ?? `中继发送失败（HTTP ${xhr.status}）`);
+      const error = new Error(data?.message ?? '发送失败，请稍后重试。');
       error.status = xhr.status;
       reject(error);
     });
@@ -285,7 +285,7 @@ export function getViaRelayUrl({ shareId, idx, token }) {
 export async function readViaRelay({ shareId, idx, token, sink, onProgress, totalHint = 0 }) {
   const response = await fetch(getViaRelayUrl({ shareId, idx, token }));
   if (!response.ok) {
-    let message = `取件失败（HTTP ${response.status}）`;
+    let message = '读取失败，请稍后重试。';
     try {
       const data = await response.json();
       message = data?.message ?? message;
@@ -372,7 +372,7 @@ export function saveBlob(blob, fileName) {
 export async function downloadUrl(url, fileName) {
   const response = await fetch(url);
   if (!response.ok) {
-    const error = new Error(`下载失败（HTTP ${response.status}）`);
+    const error = new Error('下载失败，请稍后重试。');
     error.status = response.status;
     throw error;
   }
@@ -384,7 +384,7 @@ export async function downloadUrl(url, fileName) {
 export async function downloadToSink({ url, sink }) {
   const response = await fetch(url);
   if (!response.ok) {
-    const error = new Error(`下载失败（HTTP ${response.status}）`);
+    const error = new Error('下载失败，请稍后重试。');
     error.status = response.status;
     throw error;
   }

@@ -43,7 +43,7 @@ export async function main() {
 
   const app = createApp({ config, logger, services });
   const server = http.createServer(app.handler);
-  const realtime = attachWebSocket({ server, config, logger, services });
+  const realtime = attachWebSocket({ server, logger, services });
 
   // 大文件上传/下载与内存中继都是长连接，不设整体超时，只保留头部超时。
   server.requestTimeout = 0;

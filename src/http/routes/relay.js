@@ -29,7 +29,7 @@ export function registerRelayRoutes(router, { config, logger, services }) {
       throw badRequest(kind === 'text' ? '该分享不是文字分享' : '该分享不是文件分享');
     }
     if (share.mode !== 'p2p') {
-      throw conflict('暂存分享请直接下载，不需要中继');
+      throw conflict('该分享可以直接下载');
     }
     return share;
   }

@@ -46,7 +46,7 @@ export function createRelayBridge({ config, logger }) {
    */
   async function pair(key, side, ctx) {
     if (!config.relayEnabled) {
-      throw new AppError('relay_disabled', 503, '服务器已关闭内存中继，请让发送方与接收方直连');
+      throw new AppError('relay_disabled', 503, '服务器当前无法转交内容，请稍后重试');
     }
     if (active.size >= config.relayMaxSessions) {
       throw new AppError('relay_busy', 503, '服务器同时传输的任务太多，请稍后再试');

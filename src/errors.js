@@ -27,7 +27,7 @@ export class AppError extends Error {
 export const badRequest = (message = '请求参数不正确', details) =>
   new AppError('bad_request', 400, message, details);
 
-export const unauthorized = (message = '缺少或无效的访问凭证') =>
+export const unauthorized = (message = '请重新打开分享链接或输入密码') =>
   new AppError('unauthorized', 401, message);
 
 export const forbidden = (message = '密码错误') => new AppError('forbidden', 403, message);
@@ -51,9 +51,9 @@ export const relayTimeout = (message = '等待接收方接入超时') =>
 export const insufficientStorage = (message = '服务器暂存空间不足') =>
   new AppError('insufficient_storage', 507, message);
 
-export const conflict = (message = '请求与当前状态冲突') => new AppError('conflict', 409, message);
+export const conflict = (message = '当前状态无法完成此操作') => new AppError('conflict', 409, message);
 
-export const internal = (message = '服务器内部错误') =>
+export const internal = (message = '服务器出错了，请稍后重试') =>
   new AppError('internal_error', 500, message);
 
 export const configError = (message) => new AppError('bad_config', 500, message);

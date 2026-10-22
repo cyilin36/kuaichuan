@@ -26,21 +26,17 @@ function senderOnlineOf(services, share) {
   return presence.isOnline(share.id);
 }
 
-function pickOrigin({ requested, share, config, requestOrigin }) {
-  return normalizeOrigin(requested)
-    ?? normalizeOrigin(share.baseUrl)
-    ?? normalizeOrigin(config.baseUrl)
-    ?? normalizeOrigin(requestOrigin)
-    ?? `http://localhost:${config.port}`;
+function pickOrigin({ requested, requestOrigin }) {
+  return normalizeOrigin(requested) ?? requestOrigin;
 }
 
 export function registerShareRoutes(router, { config, logger, services }) {
   const { db, locations, tokenSecret } = services;
 
-  router.post('/api/shares', async (req, res, { url }) => {
+  router.post('/api/shares', async (req, res) => {
     const body = await readJsonBody(req);
     const created = await createShare({
-      db, config, logger, input: body, requestOrigin: url.origin,
+      db, config, logger, input: body,
     });
     sendJson(res, 201, created);
   });
@@ -94,8 +90,6 @@ export function registerShareRoutes(router, { config, logger, services }) {
 
     const origin = pickOrigin({
       requested: url.searchParams.get('origin'),
-      share,
-      config,
       requestOrigin: url.origin,
     });
     const svg = await QRCode.toString(`${origin}/s/${share.id}`, {

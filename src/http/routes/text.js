@@ -23,7 +23,7 @@ export function registerTextRoutes(router, { logger, services }) {
 
     if (share.kind !== 'text') throw badRequest('该分享不是文字分享');
     if (share.mode !== 'staged') {
-      throw conflict('P2P 文字分享的内容不经过服务器，请用页面的实时通道获取');
+      throw conflict('该分享的内容不经过服务器，请在分享页面中查看');
     }
     if (share.textContent === null || share.textContent === undefined) {
       throw gone('文字内容已被取走或已销毁');

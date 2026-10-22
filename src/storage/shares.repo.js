@@ -5,7 +5,7 @@
  */
 
 const SHARE_COLUMNS = [
-  'id', 'kind', 'mode', 'title', 'status', 'base_url',
+  'id', 'kind', 'mode', 'title', 'status',
   'password_hash', 'password_salt', 'owner_hash', 'text_content',
   'total_bytes', 'downloads', 'max_downloads', 'burn_after_read',
   'created_at', 'expires_at', 'last_access_at', 'revoked_at',
@@ -19,7 +19,6 @@ function toShare(row) {
     mode: row.mode,
     title: row.title,
     status: row.status,
-    baseUrl: row.base_url,
     passwordHash: row.password_hash,
     passwordSalt: row.password_salt,
     ownerHash: row.owner_hash,
@@ -39,7 +38,6 @@ function toShare(row) {
 const UPDATABLE = {
   title: ['title', String],
   status: ['status', String],
-  baseUrl: ['base_url', String],
   textContent: ['text_content', (v) => (v === null || v === undefined ? null : String(v))],
   totalBytes: ['total_bytes', Number],
   downloads: ['downloads', Number],
@@ -63,7 +61,6 @@ export function insertShare(db, share) {
       case 'last_access_at': return share.lastAccessAt ?? null;
       case 'revoked_at': return share.revokedAt ?? null;
       case 'burn_after_read': return share.burnAfterRead ? 1 : 0;
-      case 'base_url': return share.baseUrl ?? '';
       case 'title': return share.title ?? '';
       case 'total_bytes': return share.totalBytes ?? 0;
       case 'downloads': return share.downloads ?? 0;

@@ -36,10 +36,6 @@ services:
       RELAY_WAIT_SECONDS: "120"
       RELAY_MAX_SESSIONS: "8"
 
-      # 分享链接里要使用的地址。放在公网时建议填上，例如：
-      # BASE_URL: https://share.example.com
-      BASE_URL: ""
-
       # STUN 服务器（可选，逗号分隔）。程序内置的默认值就是下面这两个公共服务器，
       # 所以不写这一项与写上去效果相同；显式留空字符串表示只尝试内网直连。
       # 打洞失败会自动改用服务器内存转发（全程不落盘），因此不需要 TURN。

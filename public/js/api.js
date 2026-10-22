@@ -31,7 +31,7 @@ export async function apiJson(path, { method = 'GET', body, token, signal } = {}
   }
 
   if (!res.ok) {
-    const error = new Error(data?.message ?? `请求失败（${res.status}）`);
+    const error = new Error(data?.message ?? '操作失败，请稍后重试。');
     error.status = res.status;
     error.code = data?.error;
     throw error;
@@ -52,15 +52,6 @@ export async function loadPublicConfig() {
       relayEnabled: true,
       passwordLength: 4,
     };
-  }
-}
-
-export async function loadNetworkCandidates() {
-  try {
-    const data = await apiJson('/api/network');
-    return data.candidates ?? [];
-  } catch {
-    return [];
   }
 }
 

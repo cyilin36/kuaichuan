@@ -2,7 +2,7 @@
   "name": "kuaichuan",
   "version": "0.1.1",
   "private": true,
-  "description": "快传：自建的文件与文字分享服务，生成链接 + 4 位密码，支持 P2P 直传与限时暂存",
+  "description": "快传：自建的文件与文字分享服务，生成链接 + 4 位密码，支持直接传输与服务器暂存",
   "type": "module",
   "engines": {
     "node": ">=24"

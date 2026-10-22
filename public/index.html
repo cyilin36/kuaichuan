@@ -20,7 +20,7 @@
       </a>
 
       <nav class="nav" aria-label="页面导航">
-        <p class="nav-label">工作区</p>
+        <p class="nav-label">导航</p>
         <a class="nav-item is-active" href="/" aria-current="page">
           <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5"/></svg>
           新建分享
@@ -50,11 +50,17 @@
           <div class="modes">
             <label class="mode">
               <input type="radio" name="mode" value="p2p" checked>
-              <span class="mode-title">P2P 直传</span>
+              <span class="option-body">
+                <span class="option-title">直接传输</span>
+                <span class="option-desc">文件在两台设备之间直接传递，不保存到服务器；需要保持此页面打开。</span>
+              </span>
             </label>
             <label class="mode">
               <input type="radio" name="mode" value="staged">
-              <span class="mode-title">暂存到服务器</span>
+              <span class="option-body">
+                <span class="option-title">先上传到服务器</span>
+                <span class="option-desc">文件先保存到服务器，对方随时下载；上传完成后可以关闭页面。</span>
+              </span>
             </label>
           </div>
         </fieldset>
@@ -145,10 +151,7 @@
         <div class="qr-block">
           <img class="qr" id="qr-img" alt="分享二维码">
           <div class="qr-side">
-            <div class="field">
-              <label class="field-label" for="origin-select">分享地址</label>
-              <select id="origin-select"></select>
-            </div>
+            <p class="field-hint">手机扫描二维码即可打开链接。</p>
           </div>
         </div>
 
