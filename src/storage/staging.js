@@ -3,6 +3,7 @@
  *
  * 这里是「暂存模式」唯一写用户文件内容的地方：
  *   - 上传先写 <idx>.part，大小校验通过后原子 rename 成 <idx>.bin
+ *   - 断点续传时按 offset 追加写；暂停/中断保留 .part，显式停止才删除
  *   - 文件名永远由序号决定，用户提供的名字只进数据库，不进路径
  */
 
@@ -16,20 +17,35 @@ import { ensureShareDir } from '../paths.js';
 import { payloadTooLarge } from '../errors.js';
 
 /**
- * 把请求体流写入暂存文件。
- * @returns {Promise<{ size: number, path: string }>}
+ * 把请求体流写入暂存文件，支持从 offset 续写。
+ *
+ * @param {object} options
+ * @param {number} [options.offset=0] 已落盘的字节数，>0 时追加写
+ * @param {number|null} [options.expectedSize=null] 文件总大小；已知时写满才 rename
+ * @param {number} [options.maxBytes=0] 未知总大小时的单文件上限
+ * @returns {Promise<{ size: number, complete: boolean }>}
  */
-export async function writeStagedFile({ locations, shareId, idx, stream, maxBytes = 0 }) {
+export async function writeStagedFile({
+  locations, shareId, idx, stream, maxBytes = 0, offset = 0, expectedSize = null,
+}) {
   await ensureShareDir(locations, shareId);
 
   const partPath = locations.partFile(shareId, idx);
   const finalPath = locations.storedFile(shareId, idx);
 
-  let written = 0;
+  const start = Number.isInteger(offset) && offset > 0 ? offset : 0;
+  let written = start;
+  // expectedSize 已知时按文件总长度卡上限；否则退回单文件上限
+  const limit = expectedSize === null ? maxBytes : Number(expectedSize);
+
   const counter = new Transform({
     transform(chunk, _encoding, callback) {
-      if (maxBytes > 0 && written + chunk.length > maxBytes) {
-        callback(payloadTooLarge(`单个文件不能超过 ${maxBytes} 字节`));
+      if (limit > 0 && written + chunk.length > limit) {
+        callback(payloadTooLarge(
+          expectedSize === null
+            ? `单个文件不能超过 ${maxBytes} 字节`
+            : `文件内容超过创建时声明的大小 ${expectedSize} 字节`,
+        ));
         return;
       }
       written += chunk.length;
@@ -38,14 +54,44 @@ export async function writeStagedFile({ locations, shareId, idx, stream, maxByte
   });
 
   try {
-    await pipeline(stream, counter, createWriteStream(partPath, { mode: 0o600 }));
-    await fsp.rename(partPath, finalPath);
-    return { size: written, path: finalPath };
+    await pipeline(
+      stream,
+      counter,
+      createWriteStream(partPath, { flags: start > 0 ? 'a' : 'w', mode: 0o600 }),
+    );
   } catch (err) {
-    // 失败或中断都不能留残渣
-    await fsp.rm(partPath, { force: true }).catch(() => {});
+    err.partialBytes = written;
+    if (err?.httpStatus === 413) {
+      // 超限不能留下可被续传的坏分片
+      await fsp.rm(partPath, { force: true }).catch(() => {});
+      err.partialBytes = 0;
+    }
     throw err;
   }
+
+  const complete = expectedSize === null || written >= expectedSize;
+  if (!complete) return { size: written, complete: false };
+
+  await fsp.rename(partPath, finalPath);
+  return { size: written, complete: true };
+}
+
+/** 未完成分片的大小，不存在返回 null */
+export async function statStagedPart(locations, shareId, idx) {
+  try {
+    const stat = await fsp.stat(locations.partFile(shareId, idx));
+    return stat.isFile() ? { size: stat.size, mtimeMs: stat.mtimeMs } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 删除未完成分片（幂等）；返回是否真的删掉了东西 */
+export async function deleteStagedPart(locations, shareId, idx) {
+  const existed = await statStagedPart(locations, shareId, idx);
+  if (!existed) return false;
+  await fsp.rm(locations.partFile(shareId, idx), { force: true });
+  return true;
 }
 
 /** 已落盘的暂存文件大小，不存在返回 null */

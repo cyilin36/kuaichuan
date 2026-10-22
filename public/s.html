@@ -75,6 +75,11 @@
         <div class="transfer" id="transfer" hidden>
           <progress id="progress" value="0" max="100" aria-label="传输进度"></progress>
           <p class="field-hint" id="transfer-text"></p>
+          <p class="field-hint" id="transfer-status" role="status" aria-live="polite"></p>
+        </div>
+        <div class="action-row transfer-actions" id="transfer-actions" hidden>
+          <button class="tiny" id="pause-btn" type="button">暂停</button>
+          <button class="tiny" id="stop-btn" type="button">停止</button>
         </div>
       </section>
     </div>

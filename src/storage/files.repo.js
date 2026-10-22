@@ -13,13 +13,14 @@ function toFile(row) {
     mime: row.mime,
     storedPath: row.stored_path,
     state: row.state,
+    receivedBytes: row.received_bytes ?? 0,
   };
 }
 
 export function insertFiles(db, shareId, files) {
   const stmt = db.prepare(
-    `INSERT INTO files (share_id, idx, rel_path, name, size, mime, stored_path, state)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO files (share_id, idx, rel_path, name, size, mime, stored_path, state, received_bytes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   for (const file of files) {
     stmt.run(
@@ -31,6 +32,7 @@ export function insertFiles(db, shareId, files) {
       file.mime ?? '',
       file.storedPath ?? null,
       file.state ?? 'pending',
+      file.receivedBytes ?? 0,
     );
   }
 }
@@ -59,6 +61,10 @@ export function updateFile(db, shareId, idx, patch) {
   if (patch.mime !== undefined) { sets.push('mime = ?'); params.push(String(patch.mime)); }
   if (patch.relPath !== undefined) { sets.push('rel_path = ?'); params.push(String(patch.relPath)); }
   if (patch.name !== undefined) { sets.push('name = ?'); params.push(String(patch.name)); }
+  if (patch.receivedBytes !== undefined) {
+    sets.push('received_bytes = ?');
+    params.push(Math.max(0, Number(patch.receivedBytes) || 0));
+  }
   if (sets.length === 0) return false;
 
   params.push(shareId, idx);

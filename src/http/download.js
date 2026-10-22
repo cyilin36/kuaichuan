@@ -52,3 +52,25 @@ export function contentDisposition(fileName, type = 'attachment') {
 
   return `${type}; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }
+
+/**
+ * 文件版本标识：大小 + 修改时间。
+ * 用于 If-Range：文件被重新上传后不允许把两个版本拼在一起。
+ */
+export function fileEtag(stat) {
+  const size = Number(stat?.size ?? 0);
+  const mtime = Math.floor(Number(stat?.mtimeMs ?? 0));
+  return `"${size.toString(16)}-${mtime.toString(16)}"`;
+}
+
+/**
+ * If-Range 是否允许继续使用 Range。
+ * 缺省（没有这个头）允许；弱 ETag、HTTP 日期等不支持的形式一律按「不一致」处理，
+ * 退化为返回完整文件，安全但稍慢。
+ */
+export function ifRangeMatches(header, etag) {
+  if (header === undefined || header === null || header === '') return true;
+  const value = String(header).trim();
+  if (value.startsWith('W/')) return false;
+  return value === etag;
+}

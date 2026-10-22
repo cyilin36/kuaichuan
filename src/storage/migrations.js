@@ -68,6 +68,13 @@ const MIGRATIONS = [
       ALTER TABLE shares DROP COLUMN base_url;
     `,
   },
+  {
+    // 断点续传：记录未完成分片已落盘的字节数，让配额统计也能覆盖 .part。
+    version: 3,
+    up: `
+      ALTER TABLE files ADD COLUMN received_bytes INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

@@ -51,7 +51,8 @@ export const relayTimeout = (message = '等待接收方接入超时') =>
 export const insufficientStorage = (message = '服务器暂存空间不足') =>
   new AppError('insufficient_storage', 507, message);
 
-export const conflict = (message = '当前状态无法完成此操作') => new AppError('conflict', 409, message);
+export const conflict = (message = '当前状态无法完成此操作', details) =>
+  new AppError('conflict', 409, message, details);
 
 export const internal = (message = '服务器出错了，请稍后重试') =>
   new AppError('internal_error', 500, message);

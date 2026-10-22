@@ -14,6 +14,8 @@ import { describeProgress, formatBytes } from './format.js';
 import {
   CHANNEL_TIMEOUT_MS, PATH, RtcPeer, createSignaling, postViaRelay,
 } from './transport.js';
+import { CONTROL, TransferGate, createTransferControls } from './transfer-control.js';
+import { createStagedUploader } from './staged-upload.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -22,6 +24,8 @@ const state = {
   kind: 'file',
   files: [],
   share: null,
+  controls: null,
+  activeController: null,
 };
 
 function shareUrl() {
@@ -260,62 +264,26 @@ function renderNextSteps(share) {
 // 暂存上传
 // ---------------------------------------------------------------------------
 
-function putStagedFile({ shareId, idx, token, file, onProgress }) {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('PUT', `/api/shares/${shareId}/files/${idx}`);
-    xhr.setRequestHeader('authorization', `Bearer ${token}`);
-    xhr.setRequestHeader('content-type', 'application/octet-stream');
-    xhr.upload.addEventListener('progress', (event) => onProgress?.(event.loaded, event.total || file.size));
-    xhr.addEventListener('load', () => {
-      let data = null;
-      try {
-        data = JSON.parse(xhr.responseText);
-      } catch {
-        data = null;
-      }
-      if (xhr.status >= 200 && xhr.status < 300 && data?.ok) {
-        resolve(data);
-        return;
-      }
-      reject(new Error(data?.message ?? '上传失败，请稍后重试。'));
-    });
-    xhr.addEventListener('error', () => reject(new Error('上传失败：网络错误')));
-    xhr.addEventListener('abort', () => reject(new Error('上传已取消')));
-    xhr.send(file);
-  });
-}
-
 async function uploadStaged(share) {
-  const total = state.files.reduce((sum, item) => sum + item.size, 0);
   const progress = $('progress');
   const progressText = $('progress-text');
   progress.hidden = false;
+  progress.value = 0;
 
-  let uploaded = 0;
-  const startedAt = Date.now();
-  setSenderStatus('正在上传…');
+  const uploader = createStagedUploader({
+    share,
+    files: state.files,
+    progress,
+    progressText,
+    controls: state.controls,
+    onStatus: setSenderStatus,
+  });
 
+  state.activeController = uploader;
   try {
-    for (const [idx, item] of state.files.entries()) {
-      await putStagedFile({
-        shareId: share.id,
-        idx,
-        token: share.ownerToken,
-        file: item.file,
-        onProgress: (sent) => {
-          const overall = uploaded + sent;
-          progress.value = total > 0 ? (overall / total) * 100 : 100;
-          progressText.textContent = describeProgress({ sent: overall, total, startedAt });
-        },
-      });
-      uploaded += item.size;
-      progress.value = total > 0 ? (uploaded / total) * 100 : 100;
-    }
-    progressText.textContent = `已上传 ${formatBytes(uploaded)}`;
-    setSenderStatus('上传完成，可以关闭本页面了。', 'ok');
-  } catch (err) {
-    setSenderStatus(`上传失败：${err.message}`, 'danger');
+    await uploader.start();
+  } finally {
+    state.activeController = null;
   }
 }
 
@@ -337,10 +305,41 @@ async function startP2PSession(share) {
     iceServers = [];
   }
 
+  const progress = $('progress');
+  const progressText = $('progress-text');
+  progress.hidden = false;
+  progress.value = 0;
+
+  const total = state.files.reduce((sum, item) => sum + item.size, 0);
+  const startedAt = Date.now();
+  const gate = new TransferGate();
+
   let rtc = null;
   let started = false;
   let finished = false;
-  setSenderStatus('等待对方打开链接…');
+  let stopped = false;
+  let mode = null;
+  let relayAbort = null;
+  let sentTotal = 0;
+  let relayCompleted = 0;
+  let lastAck = -1;
+  let ackWaiters = [];
+
+  state.controls.setState(CONTROL.WAITING, { allowPause: false });
+
+  const sendControl = (action, extra = {}) => {
+    try {
+      signaling.send({ k: 'control', action, ...extra });
+    } catch {
+      // 对端可能已断开，控制消息失败不影响本端收尾
+    }
+  };
+
+  const showProgress = (sent) => {
+    sentTotal = Math.max(sentTotal, sent);
+    progress.value = total > 0 ? Math.min(100, (sentTotal / total) * 100) : 100;
+    progressText.textContent = describeProgress({ sent: sentTotal, total, startedAt });
+  };
 
   const signaling = createSignaling({
     shareId: share.id,
@@ -348,31 +347,152 @@ async function startP2PSession(share) {
     token: share.ownerToken,
     handlers: {
       onPeerJoined: (role) => {
+        if (stopped || finished) return;
         if (role === 'receiver' || role === 'download') {
           setSenderStatus('对方已连接，开始传输…', 'ok');
-          maybeStart();
+          begin();
         }
       },
       onPeerLeft: () => {
-        if (!finished) setSenderStatus('对方已离开，链接仍然有效。', 'warn');
+        if (!finished && !stopped) setSenderStatus('对方已离开，链接仍然有效。', 'warn');
       },
       onPayload: (payload) => {
+        if (payload?.k === 'control') {
+          handleControl(payload);
+          return;
+        }
         rtc?.handleSignal(payload).catch(() => {});
       },
       onClose: () => {
-        if (!finished) setSenderStatus('连接已断开，请刷新页面重新等待。', 'danger');
+        if (finished || stopped) return;
+        state.controls.setState(CONTROL.ERROR);
+        setSenderStatus('连接已断开，请刷新页面重新等待。', 'danger');
       },
     },
   });
 
-  const readyState = await signaling.ready;
-  if (readyState.peers.some((role) => role === 'receiver' || role === 'download')) {
-    setSenderStatus('对方已在等待，开始传输…', 'ok');
-    maybeStart();
+  state.activeController = {
+    pause: pauseTransfer,
+    resume: resumeTransfer,
+    stop: stopTransfer,
+  };
+
+  setSenderStatus('等待对方打开链接…');
+
+  try {
+    const readyState = await signaling.ready;
+    if (stopped || finished) return;
+    if (readyState.peers.some((role) => role === 'receiver' || role === 'download')) {
+      setSenderStatus('对方已在等待，开始传输…', 'ok');
+      begin();
+    }
+  } catch {
+    if (!stopped && !finished) {
+      state.controls.setState(CONTROL.ERROR);
+      setSenderStatus('连接失败，请刷新页面重试。', 'danger');
+    }
+  }
+
+  function handleControl(payload) {
+    if (!payload || stopped) return;
+    if (payload.action === 'file-done') {
+      const idx = Number(payload.idx);
+      if (!Number.isInteger(idx)) return;
+      lastAck = Math.max(lastAck, idx);
+      for (const waiter of ackWaiters.filter((item) => item.idx <= lastAck)) {
+        clearTimeout(waiter.timer);
+        waiter.resolve(true);
+      }
+      ackWaiters = ackWaiters.filter((item) => item.idx > lastAck);
+      return;
+    }
+    if (finished) return;
+
+    if (payload.action === 'pause') {
+      gate.pause();
+      relayAbort?.abort();
+      state.controls.setState(CONTROL.PAUSED);
+      setSenderStatus('对方已暂停接收。', 'warn');
+      return;
+    }
+    if (payload.action === 'resume') {
+      gate.resume();
+      state.controls.setState(CONTROL.RUNNING);
+      setSenderStatus('对方已继续接收。', 'ok');
+      return;
+    }
+    if (payload.action === 'stop') {
+      stopTransfer();
+    }
+  }
+
+  function waitForAck(idx, timeoutMs = 8000) {
+    if (lastAck >= idx) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const waiter = {
+        idx,
+        resolve,
+        timer: setTimeout(() => {
+          ackWaiters = ackWaiters.filter((item) => item !== waiter);
+          resolve(false);
+        }, timeoutMs),
+      };
+      ackWaiters.push(waiter);
+    });
+  }
+
+  async function pauseTransfer() {
+    if (!started || finished || stopped) return;
+    gate.pause();
+    state.controls.setState(CONTROL.PAUSING);
+    setSenderStatus('正在暂停…');
+    sendControl('pause');
+    relayAbort?.abort();
+    await sleep(30);
+    if (!finished && !stopped) {
+      state.controls.setState(CONTROL.PAUSED);
+      setSenderStatus(
+        mode === 'relay' ? '已暂停。继续时将从当前文件开头重传。' : '已暂停。',
+        'warn',
+      );
+    }
+  }
+
+  function resumeTransfer() {
+    if (finished || stopped || !gate.paused) return;
+    gate.resume();
+    state.controls.setState(CONTROL.RUNNING);
+    setSenderStatus('正在继续传输…');
+    sendControl('resume');
+  }
+
+  function stopTransfer() {
+    if (finished || stopped) return;
+    stopped = true;
+    finished = true;
+    gate.stop();
+    state.controls.setState(CONTROL.STOPPING);
+    setSenderStatus('正在停止…');
+    sendControl('stop');
+    relayAbort?.abort();
+    rtc?.close();
+    rtc = null;
+    signaling.close();
+    state.controls.setState(CONTROL.STOPPED);
+    progressText.textContent = `已传送 ${formatBytes(sentTotal)}`;
+    setSenderStatus('已停止。', 'warn');
+  }
+
+  function begin() {
+    maybeStart().catch((err) => {
+      if (finished || stopped) return;
+      state.controls.setState(CONTROL.ERROR);
+      setSenderStatus(`发送失败：${err.message}`, 'danger');
+    });
   }
 
   async function maybeStart() {
-    if (started) return;
+    if (started || stopped || finished) return;
     started = true;
     if (isText) {
       await sendTextViaRelay();
@@ -382,25 +502,30 @@ async function startP2PSession(share) {
   }
 
   async function sendTextViaRelay() {
+    mode = 'relay';
+    state.controls.setState(CONTROL.RUNNING, { allowPause: false });
     signaling.send({ k: 'path', path: PATH.RELAY });
     setSenderStatus('正在把文字发给对方…');
 
     for (let attempt = 1; attempt <= 3; attempt += 1) {
+      if (stopped) return;
+      relayAbort = new AbortController();
       try {
         await postViaRelay({
           shareId: share.id,
           token: share.ownerToken,
           body: $('text-input').value,
           contentType: 'text/plain; charset=utf-8',
+          signal: relayAbort.signal,
         });
+        if (stopped) return;
         finished = true;
+        state.controls.setState(CONTROL.DONE);
         setSenderStatus('文字已送达对方。', 'ok');
         return;
       } catch (err) {
-        if (attempt === 3) {
-          setSenderStatus(`发送失败：${err.message}`, 'danger');
-          return;
-        }
+        if (stopped) return;
+        if (attempt === 3) throw err;
         await sleep(1500);
       }
     }
@@ -415,10 +540,6 @@ async function startP2PSession(share) {
 
   async function sendFiles() {
     setSenderStatus('正在连接对方…');
-
-    const progress = $('progress');
-    const progressText = $('progress-text');
-    progress.hidden = false;
 
     let rejectOnFailure;
     const failure = new Promise((_, reject) => {
@@ -438,65 +559,102 @@ async function startP2PSession(share) {
       const offer = await rtc.createOffer();
       signaling.send({ k: 'sdp', sdp: offer });
       await Promise.race([rtc.waitForChannel(CHANNEL_TIMEOUT_MS), failure]);
+      if (stopped) return;
+
+      mode = 'webrtc';
+      state.controls.setState(CONTROL.RUNNING, { allowPause: true });
       setSenderStatus('已连接对方，开始传输…', 'ok');
 
-      const total = state.files.reduce((sum, item) => sum + item.size, 0);
-      const startedAt = Date.now();
       let sentBytes = 0;
-
-      for (const item of state.files) {
+      for (const [idx, item] of state.files.entries()) {
         await rtc.sendFile(item.file, {
-          idx: item.idx ?? state.files.indexOf(item),
-          onProgress: (sent) => {
-            const overall = sentBytes + sent;
-            progress.value = total > 0 ? (overall / total) * 100 : 100;
-            progressText.textContent = describeProgress({ sent: overall, total, startedAt });
-          },
+          idx,
+          gate,
+          onProgress: (sent) => showProgress(sentBytes + sent),
         });
-        sentBytes += item.file.size;
+        sentBytes += item.size;
+        showProgress(sentBytes);
       }
 
       finished = true;
+      state.controls.setState(CONTROL.DONE);
+      progress.value = 100;
       progressText.textContent = `已传送 ${formatBytes(sentBytes)}`;
       setSenderStatus('全部文件已送达对方，可以关闭页面了。', 'ok');
       return;
     } catch (err) {
-      rtc.close();
+      rtc?.close();
       rtc = null;
+      if (stopped || finished || gate.stopped) return;
       setSenderStatus('无法直接连接，改为由服务器转交（不会保存到服务器）…', 'warn');
     }
 
     signaling.send({ k: 'path', path: PATH.RELAY });
     await sleep(200);
-    await sendFilesViaRelay(progress, progressText);
+    await sendFilesViaRelay();
   }
 
-  async function sendFilesViaRelay(progress, progressText) {
-    const total = state.files.reduce((sum, item) => sum + item.size, 0);
-    const startedAt = Date.now();
-    let sentBytes = 0;
+  async function sendFilesViaRelay() {
+    mode = 'relay';
+    state.controls.setState(gate.paused ? CONTROL.PAUSED : CONTROL.RUNNING, { allowPause: true });
+    if (!gate.paused) setSenderStatus('正在由服务器转交（不会保存到服务器）…', 'warn');
 
-    try {
-      for (const [idx, item] of state.files.entries()) {
-        await postViaRelay({
-          shareId: share.id,
-          idx,
-          token: share.ownerToken,
-          body: item.file,
-          onProgress: (sent) => {
-            const overall = sentBytes + sent;
-            progress.value = total > 0 ? (overall / total) * 100 : 100;
-            progressText.textContent = describeProgress({ sent: overall, total, startedAt });
-          },
-        });
-        sentBytes += item.file.size;
+    for (let idx = 0; idx < state.files.length; idx += 1) {
+      const item = state.files[idx];
+      let done = false;
+      let retries = 0;
+      let ackMisses = 0;
+
+      while (!done) {
+        await gate.wait();
+        if (stopped) return;
+        state.controls.setState(CONTROL.RUNNING, { allowPause: true });
+
+        relayAbort = new AbortController();
+        try {
+          await postViaRelay({
+            shareId: share.id,
+            idx,
+            token: share.ownerToken,
+            body: item.file,
+            signal: relayAbort.signal,
+            onProgress: (sent) => showProgress(relayCompleted + sent),
+          });
+
+          const acked = await waitForAck(idx);
+          if (!acked) {
+            ackMisses += 1;
+            if (ackMisses > 3) throw new Error('对方长时间没有确认接收，请重新连接后再试');
+            // 对端可能正在暂停，等它恢复后重传当前文件，保证双方序号一致
+            await gate.wait();
+            if (stopped) return;
+            continue;
+          }
+
+          relayCompleted += item.size;
+          sentTotal = relayCompleted;
+          showProgress(relayCompleted);
+          done = true;
+        } catch (err) {
+          if (stopped) return;
+          if (err.code === 'aborted') continue;
+          if (retries < 3) {
+            retries += 1;
+            setSenderStatus(`发送中断，正在重试（${retries}/3）…`, 'warn');
+            await sleep(800 * retries);
+            continue;
+          }
+          throw err;
+        }
       }
-      finished = true;
-      progressText.textContent = `已传送 ${formatBytes(sentBytes)}`;
-      setSenderStatus('全部文件已送达对方，可以关闭页面了。', 'ok');
-    } catch (err) {
-      setSenderStatus(`发送失败：${err.message}`, 'danger');
     }
+
+    if (stopped) return;
+    finished = true;
+    state.controls.setState(CONTROL.DONE);
+    progress.value = 100;
+    progressText.textContent = `已传送 ${formatBytes(relayCompleted)}`;
+    setSenderStatus('全部文件已送达对方，可以关闭页面了。', 'ok');
   }
 }
 
@@ -537,6 +695,19 @@ async function init() {
   fillTtlOptions();
   updateQr();
   updateTextCount();
+
+  state.controls = createTransferControls({
+    container: $('transfer-actions'),
+    pauseButton: $('pause-btn'),
+    stopButton: $('stop-btn'),
+    onChange: (action) => {
+      const controller = state.activeController;
+      if (!controller) return;
+      if (action === 'pause') controller.pause();
+      else if (action === 'resume') controller.resume();
+      else if (action === 'stop') controller.stop();
+    },
+  });
 
   $('tab-file').addEventListener('click', () => switchKind('file'));
   $('tab-text').addEventListener('click', () => switchKind('text'));

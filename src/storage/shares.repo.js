@@ -134,13 +134,15 @@ export function listStagedOldest(db, limit = 1000) {
   ).all(limit);
 }
 
-/** 暂存占用（只统计已上传完成的文件字节） */
+/** 暂存占用（已上传文件按 size，未完成分片按 received_bytes，防止绕过配额） */
 export function stagedUsage(db) {
   const row = db.prepare(
-    `SELECT COUNT(DISTINCT s.id) AS shares, COALESCE(SUM(f.size), 0) AS bytes
+    `SELECT
+       COUNT(DISTINCT CASE WHEN f.state = 'uploaded' OR f.received_bytes > 0 THEN s.id END) AS shares,
+       COALESCE(SUM(CASE WHEN f.state = 'uploaded' THEN f.size ELSE f.received_bytes END), 0) AS bytes
      FROM shares s
      JOIN files f ON f.share_id = s.id
-     WHERE s.mode = 'staged' AND f.state = 'uploaded'`,
+     WHERE s.mode = 'staged'`,
   ).get();
   return { shares: Number(row?.shares ?? 0), bytes: Number(row?.bytes ?? 0) };
 }

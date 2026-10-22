@@ -211,16 +211,20 @@ export class RtcPeer {
     return this.send(JSON.stringify(object));
   }
 
-  async sendFile(file, { idx, onProgress } = {}) {
+  async sendFile(file, { idx, onProgress, gate } = {}) {
+    await gate?.wait();
     await this.sendControl({ k: 'file', idx, size: file.size, type: file.type || '' });
     let sent = 0;
     while (sent < file.size) {
+      // 暂停时停在分片边界；继续后从当前位置接着发
+      await gate?.wait();
       const slice = file.slice(sent, Math.min(sent + CHUNK_SIZE, file.size));
       const buffer = await slice.arrayBuffer();
       await this.send(buffer);
       sent += buffer.byteLength;
       onProgress?.(sent, file.size);
     }
+    await gate?.wait();
     await this.sendControl({ k: 'end', idx });
     return sent;
   }
@@ -245,13 +249,25 @@ export { ICE_TIMEOUT_MS, CHANNEL_TIMEOUT_MS };
 // 内存中继（服务器转发，不落盘）
 // --------------------------------------------------------------------------
 
-export function postViaRelay({ shareId, idx, token, body, onProgress, contentType = 'application/octet-stream' }) {
+export function postViaRelay({
+  shareId, idx, token, body, onProgress, contentType = 'application/octet-stream', signal,
+}) {
   const suffix = idx === undefined ? 'text' : `f/${idx}`;
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `/api/relay/${shareId}/${suffix}`);
     xhr.setRequestHeader('authorization', `Bearer ${token}`);
     xhr.setRequestHeader('content-type', contentType);
+
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener('abort', onSignalAbort);
+      fn(value);
+    };
+    const onSignalAbort = () => xhr.abort();
+    signal?.addEventListener('abort', onSignalAbort, { once: true });
 
     if (onProgress) {
       xhr.upload.addEventListener('progress', (event) => onProgress(event.loaded, event.total || 0));
@@ -264,15 +280,23 @@ export function postViaRelay({ shareId, idx, token, body, onProgress, contentTyp
         data = null;
       }
       if (xhr.status >= 200 && xhr.status < 300 && data?.ok) {
-        resolve(data);
+        finish(resolve, data);
         return;
       }
       const error = new Error(data?.message ?? '发送失败，请稍后重试。');
       error.status = xhr.status;
-      reject(error);
+      finish(reject, error);
     });
-    xhr.addEventListener('error', () => reject(new Error('发送失败：网络错误')));
-    xhr.addEventListener('abort', () => reject(new Error('已取消')));
+    xhr.addEventListener('error', () => {
+      const error = new Error('发送失败：网络错误');
+      error.code = 'network';
+      finish(reject, error);
+    });
+    xhr.addEventListener('abort', () => {
+      const error = new Error('已取消');
+      error.code = 'aborted';
+      finish(reject, error);
+    });
     xhr.send(body);
   });
 }
@@ -282,8 +306,8 @@ export function getViaRelayUrl({ shareId, idx, token }) {
   return `/api/relay/${shareId}/${suffix}?t=${encodeURIComponent(token)}`;
 }
 
-export async function readViaRelay({ shareId, idx, token, sink, onProgress, totalHint = 0 }) {
-  const response = await fetch(getViaRelayUrl({ shareId, idx, token }));
+export async function readViaRelay({ shareId, idx, token, sink, onProgress, totalHint = 0, signal }) {
+  const response = await fetch(getViaRelayUrl({ shareId, idx, token }), { signal });
   if (!response.ok) {
     let message = '读取失败，请稍后重试。';
     try {
@@ -301,13 +325,23 @@ export async function readViaRelay({ shareId, idx, token, sink, onProgress, tota
   const reader = response.body.getReader();
   let received = 0;
 
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    received += value.byteLength;
-    if (sink) await sink.write(value);
-    onProgress?.(received, total);
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (sink) await sink.write(value);
+      onProgress?.(received, total);
+    }
+  } catch (err) {
+    if (signal?.aborted) {
+      const error = new Error('已暂停');
+      error.code = 'aborted';
+      throw error;
+    }
+    throw err;
   }
+
   if (sink) await sink.close();
   return { received, contentType: response.headers.get('content-type') ?? '' };
 }
@@ -317,9 +351,9 @@ export async function readViaRelay({ shareId, idx, token, sink, onProgress, tota
 // --------------------------------------------------------------------------
 
 export function createMemorySink() {
-  const chunks = [];
+  let chunks = [];
   let size = 0;
-  return {
+  const sink = {
     kind: 'memory',
     async write(value) {
       const copy = new Uint8Array(value.byteLength);
@@ -328,31 +362,93 @@ export function createMemorySink() {
       size += copy.byteLength;
     },
     async close() {},
+    async cleanup() {
+      chunks = [];
+      size = 0;
+    },
+    reset() {
+      chunks = [];
+      size = 0;
+    },
     get size() {
+      return size;
+    },
+    get offset() {
       return size;
     },
     toBlob(type = 'application/octet-stream') {
       return new Blob(chunks, { type });
     },
   };
+  return sink;
 }
 
-export async function createFileSystemSink({ directoryHandle, relativePath }) {
+/**
+ * 写入选中的目录。
+ * - offset>0 时保留已有部分并 seek 到断点，用于暂停/中断后继续
+ * - cleanup() 只在「这个文件是本次新建」时删除，避免误删用户原有文件
+ */
+export async function createFileSystemSink({ directoryHandle, relativePath, offset = 0 }) {
   const parts = String(relativePath).split('/').filter(Boolean);
   const fileName = parts.pop() ?? 'file';
   let directory = directoryHandle;
   for (const part of parts) {
     directory = await directory.getDirectoryHandle(part, { create: true });
   }
+
+  let existed = true;
+  try {
+    await directory.getFileHandle(fileName);
+  } catch {
+    existed = false;
+  }
+  if (offset > 0 && !existed) {
+    const error = new Error('找不到未完成的文件，无法续写');
+    error.code = 'missing_partial';
+    throw error;
+  }
+
   const fileHandle = await directory.getFileHandle(fileName, { create: true });
-  const writable = await fileHandle.createWritable();
+  const writable = await fileHandle.createWritable({ keepExistingData: offset > 0 });
+
+  if (offset > 0) {
+    try {
+      if (typeof writable.truncate !== 'function' || typeof writable.seek !== 'function') {
+        throw new Error('浏览器不支持断点写入');
+      }
+      await writable.truncate(offset);
+      await writable.seek(offset);
+    } catch (err) {
+      await writable.close().catch(() => {});
+      const error = new Error('当前浏览器不支持从断点续写，将重新下载该文件');
+      error.code = 'no_seek';
+      error.cause = err;
+      throw error;
+    }
+  }
+
+  let position = offset;
+  let closed = false;
   return {
     kind: 'fs',
+    existed,
+    fileName,
+    get offset() {
+      return position;
+    },
     async write(value) {
+      const length = Number(value?.byteLength ?? value?.size ?? 0);
       await writable.write(value);
+      position += length;
     },
     async close() {
+      if (closed) return;
+      closed = true;
       await writable.close();
+    },
+    async cleanup() {
+      await this.close().catch(() => {});
+      if (!existed) await directory.removeEntry(fileName).catch(() => {});
     },
   };
 }
