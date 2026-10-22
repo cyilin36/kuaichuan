@@ -1,6 +1,6 @@
 {
   "name": "kuaichuan",
-  "version": "0.1.1",
+  "version": "0.1.2-rc1",
   "private": true,
   "description": "快传：自建的文件与文字分享服务，生成链接 + 4 位密码，支持直接传输与服务器暂存",
   "type": "module",
