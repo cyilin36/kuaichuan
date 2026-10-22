@@ -24,12 +24,12 @@ RUN corepack enable \
 
 COPY src ./src
 COPY public ./public
+COPY scripts/docker-entrypoint.mjs ./scripts/docker-entrypoint.mjs
 
-# 数据目录必须在镜像里先建好并归 node 用户：
-# 用命名卷时 Docker 会沿用这个所有权，容器里的非 root 用户才能写入。
+# 数据目录在镜像里先建好并归 node：命名卷首次挂载会沿用这个属主。
+# bind mount 时宿主机目录可能属于 root 或宿主机上的其他用户，
+# 由入口脚本在启动时纠正（见 scripts/docker-entrypoint.mjs）。
 RUN mkdir -p /data/files /data/logs /data/tmp && chown -R node:node /data /app
-
-USER node
 
 VOLUME ["/data"]
 EXPOSE 7654
@@ -37,4 +37,7 @@ EXPOSE 7654
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD wget -q -O - http://127.0.0.1:7654/healthz > /dev/null || exit 1
 
+# 入口脚本以 root 启动，先把数据目录属主纠正为 node（uid 1000），
+# 再降权到 node 启动真正的服务进程。宿主机因此不需要任何 sudo chown。
+ENTRYPOINT ["node", "scripts/docker-entrypoint.mjs"]
 CMD ["node", "src/server.js"]

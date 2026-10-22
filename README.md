@@ -50,11 +50,7 @@ docker compose up -d
 
 服务地址与上一种方式相同。数据保存在名为 `kuaichuan-data` 的卷中：执行 `docker compose down` 仅停止服务并保留数据，执行 `docker compose down -v` 会同时删除数据。
 
-如需将数据存放在宿主机目录，请将 `docker-compose.yml` 中的卷映射改为 `./data:/data`，并先执行：
-
-```bash
-mkdir -p data && sudo chown 1000:1000 data
-```
+如需将数据存放在宿主机目录，请将 `docker-compose.yml` 中的卷映射改为 `./data:/data`。容器启动时会自动把该目录的属主调整为容器内的运行用户，不需要在宿主机执行 `chown` 或 `sudo`；数据目录可直接查看和备份。Docker 部署全程不需要 `sudo`。
 
 仓库在打 tag 时会自动构建镜像并发布到 GitHub Container Registry，也可以不本地构建，直接拉取使用：
 

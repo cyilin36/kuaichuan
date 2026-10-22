@@ -6,6 +6,9 @@
 #   打开 http://localhost:7654
 #
 # 想改端口 / 有效期 / 容量，直接改下面的 environment。
+#
+# 部署不需要 sudo：容器启动时会先修正数据目录的属主，再降权到非 root 用户运行，
+# 所以无论用命名卷还是宿主机目录，都不需要在宿主机上执行 chown。
 
 services:
   kuaichuan:
@@ -37,9 +40,10 @@ services:
       # BASE_URL: https://share.example.com
       BASE_URL: ""
 
-      # STUN 服务器（留空表示只尝试内网直连）
-      STUN_URLS: "stun:stun.cloudflare.com:3478,stun:stun.l.google.com:19302"
-      # 不需要 TURN：打洞失败会自动改用内存转发（不落盘）
+      # STUN 服务器（可选，逗号分隔）。程序内置的默认值就是下面这两个公共服务器，
+      # 所以不写这一项与写上去效果相同；显式留空字符串表示只尝试内网直连。
+      # 打洞失败会自动改用服务器内存转发（全程不落盘），因此不需要 TURN。
+      # STUN_URLS: "stun:stun.cloudflare.com:3478,stun:stun.l.google.com:19302"
 
       # 令牌签名密钥。留空则首次启动自动生成并保存到数据目录
       # TOKEN_SECRET: 换成一串随机字符
@@ -47,10 +51,11 @@ services:
       LOG_LEVEL: info
 
     volumes:
-      # 默认用命名卷：Docker 会沿用镜像里 /data 的属主，非 root 用户可直接写入。
+      # 默认用命名卷：Docker 会沿用镜像里 /data 的属主，容器内的非 root 用户可直接写入。
       - kuaichuan-data:/data
-      # 想直接看到数据文件，就改用宿主机目录（注意先把属主改成 1000:1000）：
-      #   mkdir -p data && sudo chown 1000:1000 data
+      # 想在宿主机上直接看到数据文件，改用下面这行即可。
+      # 容器启动时会自动把目录属主调整为容器内的运行用户（uid 1000），
+      # 所以不需要在宿主机执行 chown 或 sudo。
       # - ./data:/data
 
 volumes:
