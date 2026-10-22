@@ -24,9 +24,9 @@ services:
       DATA_DIR: /data
       ALLOW_EXTERNAL_DATA_DIR: "1"
 
-      # 暂存分享的保留时长与上限
+      # 「先上传到服务器」的保留时长与上限；直接传输不需要设置有效期
       DEFAULT_TTL_HOURS: "24"
-      MAX_TTL_HOURS: "168"
+      MAX_TTL_HOURS: "168"              # 也是直接传输分享记录的最长清理期
       MAX_FILE_BYTES: "2147483648"      # 上传到服务器的单文件 2GB
       MAX_P2P_FILE_BYTES: "0"           # 直接传输的单文件上限，0 表示不限制
       MAX_TEXT_BYTES: "1048576"         # 单条文字 1MB

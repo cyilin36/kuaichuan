@@ -70,7 +70,8 @@ async function loadPublicInfo() {
   const parts = [describeKind(info.kind), describeMode(info.mode)];
   if (info.kind === 'file') parts.push(`${info.fileCount} 个文件`, formatBytes(info.totalBytes));
   else parts.push(formatBytes(info.totalBytes));
-  parts.push(formatRemaining(info.expiresAt));
+  // 直连没有用户可选的有效期，只在发送方在线期间可用
+  if (info.mode !== 'p2p') parts.push(formatRemaining(info.expiresAt));
 
   if (info.requiresPassword) {
     $('unlock-card').hidden = false;
@@ -129,8 +130,9 @@ async function renderContent() {
   const meta = [
     describeKind(share.kind),
     describeMode(share.mode),
-    formatRemaining(share.expiresAt),
   ];
+  // 直连不展示倒计时，发送方在线状态才是它能否继续传输的依据
+  if (share.mode !== 'p2p') meta.push(formatRemaining(share.expiresAt));
   if (share.kind === 'file') meta.push(`${share.files.length} 个文件`, formatBytes(share.totalBytes));
   $('content-meta').textContent = meta.join(' · ');
 

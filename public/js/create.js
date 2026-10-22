@@ -56,6 +56,18 @@ function fileByteLimit() {
     : state.config.maxP2pFileBytes;
 }
 
+/** 有效期只对「先上传到服务器」有意义，直连改为静态说明 */
+function applyModeHints() {
+  const staged = selectedMode() === 'staged';
+  $('ttl-select').hidden = !staged;
+  $('ttl-hint').hidden = staged;
+}
+
+function onModeChange() {
+  applyModeHints();
+  renderFiles();
+}
+
 // ---------------------------------------------------------------------------
 // 选择文件
 // ---------------------------------------------------------------------------
@@ -136,7 +148,8 @@ function buildInput() {
   const common = {
     kind: state.kind,
     mode,
-    ttlHours,
+    // 直连不保存到服务器，有效期由发送端在线状态决定，不提交用户可选值
+    ...(mode === 'p2p' ? {} : { ttlHours }),
     password: $('password-toggle').checked,
     burnAfterRead: $('burn-toggle').checked,
     ...(maxDownloadsRaw === '' ? {} : { maxDownloads: Number(maxDownloadsRaw) }),
@@ -702,6 +715,7 @@ async function init() {
   document.title = `${state.config.appName} · 分享文件与文字`;
 
   fillTtlOptions();
+  applyModeHints();
   updateQr();
   updateTextCount();
 
@@ -720,9 +734,9 @@ async function init() {
 
   $('tab-file').addEventListener('click', () => switchKind('file'));
   $('tab-text').addEventListener('click', () => switchKind('text'));
-  // 单文件上限随分享方式不同，切换后立即刷新已选文件的提示
+  // 单文件上限与有效期都随分享方式不同，切换后立即刷新
   for (const radio of document.querySelectorAll('input[name="mode"]')) {
-    radio.addEventListener('change', renderFiles);
+    radio.addEventListener('change', onModeChange);
   }
   $('file-input').addEventListener('change', (event) => collectFiles(event.target, false));
   $('dir-input').addEventListener('change', (event) => collectFiles(event.target, true));

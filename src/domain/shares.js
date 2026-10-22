@@ -61,10 +61,15 @@ export async function createShare({ db, config, logger, input = {} }) {
   const mode = String(input.mode ?? '');
   if (mode !== 'p2p' && mode !== 'staged') throw badRequest('mode 只能是 p2p 或 staged');
 
-  const ttlHours = input.ttlHours === undefined || input.ttlHours === null || input.ttlHours === ''
-    ? config.defaultTtlHours
-    : Number(input.ttlHours);
-  if (!Number.isInteger(ttlHours) || ttlHours < 1 || ttlHours > config.maxTtlHours) {
+  // 直连分享不落文件，链接在发送端在线期间有效，不需要用户选保留时长；
+  // 这里仍给一个到期时间，只用于兜底清理已无人使用的死链接。
+  const ttlHours = mode === 'p2p'
+    ? config.maxTtlHours
+    : (input.ttlHours === undefined || input.ttlHours === null || input.ttlHours === ''
+      ? config.defaultTtlHours
+      : Number(input.ttlHours));
+  if (mode !== 'p2p'
+    && (!Number.isInteger(ttlHours) || ttlHours < 1 || ttlHours > config.maxTtlHours)) {
     throw badRequest(`有效期需在 1 ~ ${config.maxTtlHours} 小时之间`);
   }
 

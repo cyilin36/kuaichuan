@@ -124,10 +124,9 @@ async function renderItem(record) {
   // 查询真实状态
   try {
     const metaData = await apiJson(`/api/shares/${record.id}`, { token: record.ownerToken });
-    const bits = [
-      formatRemaining(metaData.expiresAt),
-      `已被取走 ${metaData.downloads} 次`,
-    ];
+    const bits = [`已被取走 ${metaData.downloads} 次`];
+    // 直连只在发送方在线期间可用，不展示兜底清理的倒计时
+    if (metaData.mode !== 'p2p') bits.unshift(formatRemaining(metaData.expiresAt));
     if (metaData.maxDownloads) bits.push(`上限 ${metaData.maxDownloads} 次`);
     if (metaData.burnAfterRead) bits.push('阅后即焚');
     if (metaData.mode === 'p2p') bits.push(metaData.senderOnline ? '发送方在线' : '发送方离线');
