@@ -1,6 +1,8 @@
 # 快传 —— 发布工作流
 #
 # 触发：推送 tag（tag 形如 1.2.3 或 1.2.3-beta.1，允许 v 前缀）。
+#       也可在 Actions 页面手动运行（workflow_dispatch），输入一个已有 tag 重建同一版本，
+#       用于基座镜像 / 依赖安全更新后刷新已发布镜像，不必发新版本号。
 #
 #   1.2.3         稳定版：Docker 镜像打上 1.2.3 与 latest；GitHub Release 标记为 latest。
 #   1.2.3-beta.1  预发布版：Docker 镜像只打 1.2.3-beta.1；Release 标记为 pre-release，不打 latest。
@@ -23,12 +25,19 @@ on:
     tags:
       # 只匹配含至少两个点的 tag，具体格式在 prepare 任务里严格校验
       - '*.*.*'
+  # 手动重建已有 tag：镜像与 Release 资源会被覆盖，版本号不变
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '已有 tag，例如 0.1.1'
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref_name }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 env:
@@ -40,6 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
+      ref: ${{ steps.meta.outputs.ref }}
       version: ${{ steps.meta.outputs.version }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
       image: ${{ steps.meta.outputs.image }}
@@ -49,7 +59,8 @@ jobs:
         id: meta
         shell: bash
         env:
-          TAG: ${{ github.ref_name }}
+          # 手动触发时用输入的 tag；tag 推送时用触发的那条 tag
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
 
@@ -73,6 +84,7 @@ jobs:
 
           {
             echo "tag=${TAG}"
+            echo "ref=${TAG}"
             echo "version=${version}"
             echo "prerelease=${prerelease}"
             echo "image=${image}"
@@ -104,6 +116,13 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v7
+        with:
+          # 手动重建时检出输入的 tag，tag 推送时就是触发的那条 tag
+          ref: ${{ needs.prepare.outputs.ref }}
+
+      - name: 解析提交
+        id: rev
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: 准备 Buildx
         uses: docker/setup-buildx-action@v4
@@ -122,12 +141,14 @@ jobs:
           context: .
           platforms: linux/amd64
           push: true
+          # 每次都检查基座镜像是否有更新（node:24-alpine 是浮动 tag）
+          pull: true
           tags: ${{ needs.prepare.outputs.docker_tags }}
           labels: |
             org.opencontainers.image.title=kuaichuan
             org.opencontainers.image.description=快传：自建的文件与文字分享服务
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.revision=${{ steps.rev.outputs.sha }}
             org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -141,6 +162,9 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v7
+        with:
+          # 手动重建时检出输入的 tag，tag 推送时就是触发的那条 tag
+          ref: ${{ needs.prepare.outputs.ref }}
 
       - name: 生成部署包与校验和
         shell: bash
@@ -154,9 +178,9 @@ jobs:
 
           # 从 tag 对应的提交打包，只含已跟踪文件（源码、public、Dockerfile、deploy 等）
           git archive --format=tar.gz --prefix="kuaichuan-${VERSION}/" \
-            -o "dist/kuaichuan-${VERSION}.tar.gz" "${GITHUB_SHA}"
+            -o "dist/kuaichuan-${VERSION}.tar.gz" HEAD
           git archive --format=zip --prefix="kuaichuan-${VERSION}/" \
-            -o "dist/kuaichuan-${VERSION}.zip" "${GITHUB_SHA}"
+            -o "dist/kuaichuan-${VERSION}.zip" HEAD
 
           (cd dist && sha256sum ./*.tar.gz ./*.zip > SHA256SUMS)
           cat dist/SHA256SUMS
