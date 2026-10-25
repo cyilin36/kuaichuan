@@ -367,7 +367,9 @@ function renderFilesStaged() {
   for (const [idx, file] of share.files.entries()) {
     const single = document.createElement('button');
     single.textContent = `下载 ${file.name}`;
-    single.addEventListener('click', () => startStagedDownload({ indices: [idx], useDirectory: supportsDirectoryPicker() }));
+    // 单文件不弹文件夹选择：浏览器不允许把「下载」这类目录本身交给网页写入，
+    // 一次普通下载交给浏览器自己落盘更顺，也省掉「选了却报错」这一脚。
+    single.addEventListener('click', () => startStagedDownload({ indices: [idx], useDirectory: false }));
     $('file-actions').append(single);
   }
 }
@@ -452,13 +454,15 @@ function renderFilesP2P() {
   const actions = $('file-actions');
   actions.replaceChildren();
 
+  // 与暂存模式保持一致：只有多文件才需要选目录保留相对路径，单文件直接走浏览器下载
+  const useDirectory = supportsDirectoryPicker() && share.files.length > 1;
   const start = document.createElement('button');
   start.className = 'primary';
-  start.textContent = supportsDirectoryPicker() ? '选择文件夹并开始接收' : '开始接收';
+  start.textContent = useDirectory ? '选择文件夹并开始接收' : '开始接收';
   start.addEventListener('click', async () => {
     start.disabled = true;
     start.textContent = '正在连接发送方…';
-    if (supportsDirectoryPicker()) {
+    if (useDirectory) {
       try {
         await pickDirectory();
       } catch {
@@ -473,6 +477,8 @@ function renderFilesP2P() {
 
 function startFileReceiver() {
   const share = state.share;
+  // 单文件没有目录结构要保留，也就不该把文件写进之前选的目录，统一走浏览器下载
+  const useDirectory = share.files.length > 1 && Boolean(state.directoryHandle);
   const progress = $('progress');
   const transferText = $('transfer-text');
 
@@ -791,7 +797,7 @@ function startFileReceiver() {
   }
 
   async function makeSink(idx, file) {
-    if (state.directoryHandle) {
+    if (useDirectory) {
       try {
         return await createFileSystemSink({ directoryHandle: state.directoryHandle, relativePath: file.relPath });
       } catch {
@@ -815,7 +821,7 @@ function startFileReceiver() {
   }
 
   async function makeRelaySink(file) {
-    if (state.directoryHandle) {
+    if (useDirectory) {
       try {
         return await createFileSystemSink({
           directoryHandle: state.directoryHandle,
