@@ -30,6 +30,18 @@ export function hasFolders(files) {
   return files.some((file) => String(file.relPath ?? '').split('/').filter(Boolean).length > 1);
 }
 
+/**
+ * 校验并整理「要下载哪些文件」的序号：去重、过滤越界与非法值、升序。
+ * 接收方和发送方各校验一次，避免对端传来奇怪的序号。
+ */
+export function normalizeIndices(indices, length) {
+  if (!Array.isArray(indices)) return [];
+  const total = Number(length) || 0;
+  return [...new Set(indices.map((value) => Number(value)))]
+    .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < total)
+    .sort((a, b) => a - b);
+}
+
 export function buildFileRows(files) {
   const root = makeNode('', '', 0);
 

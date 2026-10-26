@@ -11,6 +11,7 @@ import {
   apiJson, loadPublicConfig, saveLocalShare,
 } from './api.js';
 import { describeProgress, formatBytes } from './format.js';
+import { normalizeIndices } from './file-tree.js';
 import {
   CHANNEL_TIMEOUT_MS, PATH, RtcPeer, createSignaling, postViaRelay,
 } from './transport.js';
@@ -470,10 +471,7 @@ async function startP2PSession(share) {
   }
 
   function normalizeSelection(indices) {
-    if (!Array.isArray(indices)) return null;
-    const list = [...new Set(indices.map((value) => Number(value)))]
-      .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < state.files.length)
-      .sort((a, b) => a - b);
+    const list = normalizeIndices(indices, state.files.length);
     return list.length > 0 ? list : null;
   }
 

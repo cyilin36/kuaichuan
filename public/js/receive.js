@@ -13,7 +13,7 @@ import {
   CHANNEL_TIMEOUT_MS, PATH, RtcPeer, createFileSystemSink, createMemorySink, createSignaling,
   readViaRelay, saveBlob, supportsDirectoryPicker,
 } from './transport.js';
-import { buildFileRows, hasFolders, stripBase } from './file-tree.js';
+import { buildFileRows, hasFolders, normalizeIndices, stripBase } from './file-tree.js';
 import { CONTROL, createTransferControls } from './transfer-control.js';
 import { createStagedDownloader } from './staged-download.js';
 
@@ -512,9 +512,7 @@ function startP2PDownload(options) {
 async function startFileReceiver({ indices, basePath = '', wantsDirectory = false } = {}) {
   const share = state.share;
 
-  const wanted = [...new Set(indices)]
-    .filter((index) => Number.isInteger(index) && index >= 0 && index < share.files.length)
-    .sort((a, b) => a - b);
+  const wanted = normalizeIndices(indices, share.files.length);
   if (wanted.length === 0) return;
   if (downloadStarting) return;
   downloadStarting = true;
