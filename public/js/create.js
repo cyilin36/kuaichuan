@@ -352,6 +352,10 @@ async function startP2PSession(share) {
   // 同一时间只跑一轮：旧一轮的发送循环还在收尾时，新来的接收方先排队
   let roundBusy = false;
   let pendingPeer = false;
+  // 房间里是否还挂着接收方：收尾时据此决定要不要接着跑排队的下一轮
+  let peerPresent = false;
+  // 让还在等连接的 sendFiles 立刻收尾
+  let rejectRoundWait = null;
 
   state.controls.setState(CONTROL.WAITING, { allowPause: false });
 
@@ -376,10 +380,12 @@ async function startP2PSession(share) {
     handlers: {
       onPeerJoined: (role) => {
         if (stopped) return;
+        if (role === 'receiver' || role === 'download') peerPresent = true;
         handlePeer(role);
       },
       onPeerLeft: () => {
         if (stopped) return;
+        peerPresent = false;
         if (isText) {
           if (!finished) setSenderStatus('对方已离开，链接仍然有效。', 'warn');
           return;
@@ -415,6 +421,7 @@ async function startP2PSession(share) {
     if (stopped) return;
     const peerRole = readyState.peers.find((role) => role === 'receiver' || role === 'download');
     if (peerRole) {
+      peerPresent = true;
       setSenderStatus('对方已在等待…', 'ok');
       handlePeer(peerRole);
     }
@@ -508,6 +515,8 @@ async function startP2PSession(share) {
     startedAt = Date.now();
     total = state.files.reduce((sum, item) => sum + item.size, 0);
     gate = new TransferGate();
+    rejectRoundWait?.();
+    rejectRoundWait = null;
     relayAbort?.abort();
     relayAbort = null;
     rtc?.close();
@@ -536,6 +545,8 @@ async function startP2PSession(share) {
     if (stopped) return;
     finished = true;
     gate.stop();
+    rejectRoundWait?.();
+    rejectRoundWait = null;
     relayAbort?.abort();
     relayAbort = null;
     rtc?.close();
@@ -614,6 +625,8 @@ async function startP2PSession(share) {
     stopped = true;
     finished = true;
     gate.stop();
+    rejectRoundWait?.();
+    rejectRoundWait = null;
     state.controls.setState(CONTROL.STOPPING);
     setSenderStatus('正在停止…');
     sendControl('stop');
@@ -635,10 +648,12 @@ async function startP2PSession(share) {
       })
       .finally(() => {
         roundBusy = false;
-        // 发送循环收尾期间又有接收方连进来，接着跑下一轮
-        if (pendingPeer && !stopped) {
+        // 发送循环收尾期间又有接收方连进来，且对方还没走，接着跑下一轮
+        if (pendingPeer && peerPresent && !stopped) {
           pendingPeer = false;
           startRound();
+        } else {
+          pendingPeer = false;
         }
       });
   }
@@ -697,6 +712,10 @@ async function startP2PSession(share) {
     const failure = new Promise((_, reject) => {
       rejectOnFailure = reject;
     });
+    // 接收方中途离开时立刻结束本轮，不用干等连接超时
+    const aborted = new Promise((_, reject) => {
+      rejectRoundWait = () => reject(new Error('本轮已结束'));
+    });
 
     rtc = new RtcPeer({
       iceServers,
@@ -710,8 +729,9 @@ async function startP2PSession(share) {
     try {
       const offer = await rtc.createOffer();
       signaling.send({ k: 'sdp', sdp: offer });
-      await Promise.race([rtc.waitForChannel(CHANNEL_TIMEOUT_MS), failure]);
+      await Promise.race([rtc.waitForChannel(CHANNEL_TIMEOUT_MS), failure, aborted]);
       if (stopped) return;
+      rejectRoundWait = null;
 
       mode = 'webrtc';
       state.controls.setState(CONTROL.RUNNING, { allowPause: true });
@@ -735,6 +755,7 @@ async function startP2PSession(share) {
       finishRound(targets.length);
       return;
     } catch (err) {
+      rejectRoundWait = null;
       rtc?.close();
       rtc = null;
       if (stopped || finished || gate.stopped) return;

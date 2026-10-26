@@ -502,7 +502,11 @@ function startP2PDownload(options) {
     return;
   }
   // 不 await：选择目录要用掉这次点击的用户手势，由 startFileReceiver 自己收尾
-  startFileReceiver(options);
+  startFileReceiver(options).catch(() => {
+    downloadStarting = false;
+    setDownloadsBusy(false);
+    setTransferStatus('下载启动失败，请重试。', 'danger');
+  });
 }
 
 async function startFileReceiver({ indices, basePath = '', wantsDirectory = false } = {}) {
