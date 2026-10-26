@@ -712,7 +712,8 @@ button.primary:active,
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px;
+  /* --depth 由接收页按目录层级写入，用于缩进；扁平列表 depth 为 0 */
+  padding: 6px 8px 6px calc(8px + var(--depth, 0) * 18px);
   border-radius: var(--radius-md);
   color: var(--text);
   font-size: 13.5px;
@@ -740,6 +741,16 @@ button.primary:active,
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.file-list li.is-folder .name {
+  font-weight: 500;
+}
+
+/* 每行右侧的下载按钮：常显，不借助悬停 */
+.file-list .row-download {
+  flex: 0 0 auto;
+  margin-left: 2px;
 }
 
 .drag-handle {

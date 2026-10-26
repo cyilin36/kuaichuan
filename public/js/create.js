@@ -332,9 +332,9 @@ async function startP2PSession(share) {
   progress.hidden = false;
   progress.value = 0;
 
-  const total = state.files.reduce((sum, item) => sum + item.size, 0);
-  const startedAt = Date.now();
-  const gate = new TransferGate();
+  let total = state.files.reduce((sum, item) => sum + item.size, 0);
+  let startedAt = Date.now();
+  let gate = new TransferGate();
 
   let rtc = null;
   let started = false;
@@ -346,6 +346,12 @@ async function startP2PSession(share) {
   let relayCompleted = 0;
   let lastAck = -1;
   let ackWaiters = [];
+  // 本轮接收方要的文件序号；null 表示还没收到选择，按全部发送兜底
+  let wanted = null;
+  let selectionResolve = null;
+  // 同一时间只跑一轮：旧一轮的发送循环还在收尾时，新来的接收方先排队
+  let roundBusy = false;
+  let pendingPeer = false;
 
   state.controls.setState(CONTROL.WAITING, { allowPause: false });
 
@@ -369,14 +375,17 @@ async function startP2PSession(share) {
     token: share.ownerToken,
     handlers: {
       onPeerJoined: (role) => {
-        if (stopped || finished) return;
-        if (role === 'receiver' || role === 'download') {
-          setSenderStatus('对方已连接，开始传输…', 'ok');
-          begin();
-        }
+        if (stopped) return;
+        handlePeer(role);
       },
       onPeerLeft: () => {
-        if (!finished && !stopped) setSenderStatus('对方已离开，链接仍然有效。', 'warn');
+        if (stopped) return;
+        if (isText) {
+          if (!finished) setSenderStatus('对方已离开，链接仍然有效。', 'warn');
+          return;
+        }
+        if (!finished) abortRound();
+        else setSenderStatus('对方已下载完成，仍在等待下一次下载…', 'warn');
       },
       onPayload: (payload) => {
         if (payload?.k === 'control') {
@@ -403,10 +412,11 @@ async function startP2PSession(share) {
 
   try {
     const readyState = await signaling.ready;
-    if (stopped || finished) return;
-    if (readyState.peers.some((role) => role === 'receiver' || role === 'download')) {
-      setSenderStatus('对方已在等待，开始传输…', 'ok');
-      begin();
+    if (stopped) return;
+    const peerRole = readyState.peers.find((role) => role === 'receiver' || role === 'download');
+    if (peerRole) {
+      setSenderStatus('对方已在等待…', 'ok');
+      handlePeer(peerRole);
     }
   } catch {
     if (!stopped && !finished) {
@@ -428,6 +438,10 @@ async function startP2PSession(share) {
       ackWaiters = ackWaiters.filter((item) => item.idx > lastAck);
       return;
     }
+    if (payload.action === 'select') {
+      applySelection(payload.indices);
+      return;
+    }
     if (finished) return;
 
     if (payload.action === 'pause') {
@@ -446,6 +460,113 @@ async function startP2PSession(share) {
     if (payload.action === 'stop') {
       stopTransfer();
     }
+  }
+
+  function normalizeSelection(indices) {
+    if (!Array.isArray(indices)) return null;
+    const list = [...new Set(indices.map((value) => Number(value)))]
+      .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < state.files.length)
+      .sort((a, b) => a - b);
+    return list.length > 0 ? list : null;
+  }
+
+  function applySelection(indices) {
+    const list = normalizeSelection(indices);
+    if (!list) return;
+    wanted = list;
+    total = list.reduce((sum, idx) => sum + (state.files[idx]?.size ?? 0), 0);
+    progress.value = 0;
+    progressText.textContent = '';
+    selectionResolve?.(list);
+  }
+
+  /** 等接收方报“要哪几个文件”；旧页面不发选择时按全部发送兜底 */
+  function waitForSelection() {
+    if (wanted) return Promise.resolve(wanted);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        selectionResolve = null;
+        resolve(null);
+      }, 2500);
+      selectionResolve = (list) => {
+        clearTimeout(timer);
+        selectionResolve = null;
+        resolve(list);
+      };
+    });
+  }
+
+  function resetRound() {
+    finished = false;
+    started = false;
+    sentTotal = 0;
+    relayCompleted = 0;
+    lastAck = -1;
+    ackWaiters = [];
+    wanted = null;
+    selectionResolve = null;
+    startedAt = Date.now();
+    total = state.files.reduce((sum, item) => sum + item.size, 0);
+    gate = new TransferGate();
+    relayAbort?.abort();
+    relayAbort = null;
+    rtc?.close();
+    rtc = null;
+    progress.value = 0;
+    progressText.textContent = '';
+    state.controls.setState(CONTROL.WAITING, { allowPause: false });
+  }
+
+  function startRound() {
+    if (stopped) return;
+    if (roundBusy) {
+      pendingPeer = true;
+      return;
+    }
+    roundBusy = true;
+    pendingPeer = false;
+    resetRound();
+    setSenderStatus('等待对方选择要下载的文件…');
+    // 先问接收方要哪几个文件；对方不答（旧页面）就按全部发
+    sendControl('ask');
+    begin();
+  }
+
+  function abortRound() {
+    if (stopped) return;
+    finished = true;
+    gate.stop();
+    relayAbort?.abort();
+    relayAbort = null;
+    rtc?.close();
+    rtc = null;
+    // 让还在等确认的发送循环立刻退出，不用干等超时
+    for (const waiter of ackWaiters) {
+      clearTimeout(waiter.timer);
+      waiter.resolve(false);
+    }
+    ackWaiters = [];
+    state.controls.setState(CONTROL.DONE);
+    setSenderStatus('对方结束了本次下载，仍在等待下一次下载…', 'warn');
+  }
+
+  function finishRound(count) {
+    if (stopped) return;
+    finished = true;
+    state.controls.setState(CONTROL.DONE);
+    progress.value = 100;
+    progressText.textContent = `已传送 ${formatBytes(sentTotal)}`;
+    setSenderStatus(`已发送 ${count} 个文件，对方可以继续选择其他文件下载。`, 'ok');
+  }
+
+  function handlePeer(role) {
+    if (stopped) return;
+    if (isText) {
+      if (role === 'receiver' || role === 'download') begin();
+      return;
+    }
+    if (role !== 'receiver' && role !== 'download') return;
+    startRound();
   }
 
   function waitForAck(idx, timeoutMs = 8000) {
@@ -506,11 +627,20 @@ async function startP2PSession(share) {
   }
 
   function begin() {
-    maybeStart().catch((err) => {
-      if (finished || stopped) return;
-      state.controls.setState(CONTROL.ERROR);
-      setSenderStatus(`发送失败：${err.message}`, 'danger');
-    });
+    maybeStart()
+      .catch((err) => {
+        if (finished || stopped) return;
+        state.controls.setState(CONTROL.ERROR);
+        setSenderStatus(`发送失败：${err.message}`, 'danger');
+      })
+      .finally(() => {
+        roundBusy = false;
+        // 发送循环收尾期间又有接收方连进来，接着跑下一轮
+        if (pendingPeer && !stopped) {
+          pendingPeer = false;
+          startRound();
+        }
+      });
   }
 
   async function maybeStart() {
@@ -587,8 +717,12 @@ async function startP2PSession(share) {
       state.controls.setState(CONTROL.RUNNING, { allowPause: true });
       setSenderStatus('已连接对方，开始传输…', 'ok');
 
+      await waitForSelection();
+      const targets = wanted ?? state.files.map((_, index) => index);
+
       let sentBytes = 0;
-      for (const [idx, item] of state.files.entries()) {
+      for (const idx of targets) {
+        const item = state.files[idx];
         await rtc.sendFile(item.file, {
           idx,
           gate,
@@ -598,11 +732,7 @@ async function startP2PSession(share) {
         showProgress(sentBytes);
       }
 
-      finished = true;
-      state.controls.setState(CONTROL.DONE);
-      progress.value = 100;
-      progressText.textContent = `已传送 ${formatBytes(sentBytes)}`;
-      setSenderStatus('全部文件已送达对方，可以关闭页面了。', 'ok');
+      finishRound(targets.length);
       return;
     } catch (err) {
       rtc?.close();
@@ -617,11 +747,14 @@ async function startP2PSession(share) {
   }
 
   async function sendFilesViaRelay() {
+    await waitForSelection();
+    const targets = wanted ?? state.files.map((_, index) => index);
+
     mode = 'relay';
     state.controls.setState(gate.paused ? CONTROL.PAUSED : CONTROL.RUNNING, { allowPause: true });
     if (!gate.paused) setSenderStatus('正在由服务器转交（不会保存到服务器）…', 'warn');
 
-    for (let idx = 0; idx < state.files.length; idx += 1) {
+    for (const idx of targets) {
       const item = state.files[idx];
       let done = false;
       let retries = 0;
@@ -672,11 +805,8 @@ async function startP2PSession(share) {
     }
 
     if (stopped) return;
-    finished = true;
-    state.controls.setState(CONTROL.DONE);
-    progress.value = 100;
-    progressText.textContent = `已传送 ${formatBytes(relayCompleted)}`;
-    setSenderStatus('全部文件已送达对方，可以关闭页面了。', 'ok');
+    sentTotal = relayCompleted;
+    finishRound(targets.length);
   }
 }
 

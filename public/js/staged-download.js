@@ -9,6 +9,7 @@ import { describeProgress } from './format.js';
 import {
   createFileSystemSink, createMemorySink, saveBlob,
 } from './transport.js';
+import { stripBase } from './file-tree.js';
 import { CONTROL } from './transfer-control.js';
 
 const RETRY_LIMIT = 3;
@@ -16,7 +17,7 @@ const RETRY_LIMIT = 3;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export function createStagedDownloader({
-  share, token, files, directoryHandle, progress, transferText, controls, onStatus, onNotice,
+  share, token, files, directoryHandle, basePath = '', progress, transferText, controls, onStatus, onNotice,
 }) {
   const total = files.reduce((sum, item) => sum + item.size, 0);
 
@@ -102,7 +103,7 @@ export function createStagedDownloader({
       try {
         sink = await createFileSystemSink({
           directoryHandle,
-          relativePath: item.relPath,
+          relativePath: stripBase(item.relPath, basePath),
           offset,
         });
         return offset;
@@ -122,7 +123,7 @@ export function createStagedDownloader({
     try {
       sink = await createFileSystemSink({
         directoryHandle,
-        relativePath: item.relPath,
+        relativePath: stripBase(item.relPath, basePath),
         offset: 0,
       });
       return 0;

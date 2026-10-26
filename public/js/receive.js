@@ -13,6 +13,7 @@ import {
   CHANNEL_TIMEOUT_MS, PATH, RtcPeer, createFileSystemSink, createMemorySink, createSignaling,
   readViaRelay, saveBlob, supportsDirectoryPicker,
 } from './transport.js';
+import { buildFileRows, hasFolders, stripBase } from './file-tree.js';
 import { CONTROL, createTransferControls } from './transfer-control.js';
 import { createStagedDownloader } from './staged-download.js';
 
@@ -26,7 +27,6 @@ const state = {
   token: null,
   directoryHandle: null,
   signaling: null,
-  receiveButton: null,
   rtc: null,
   receiving: false,
   finished: false,
@@ -328,54 +328,91 @@ function startTextReceiver() {
     });
 }
 
-// ------------------------------- 文件：暂存 -------------------------------
+// ------------------------------- 文件：列表与下载入口 -------------------------------
 
-function renderFilesStaged() {
-  const share = state.share;
-  $('file-panel').hidden = false;
-  $('file-actions').replaceChildren();
+function setDownloadsBusy(busy) {
+  for (const button of document.querySelectorAll('#file-list button, #file-actions button')) {
+    button.disabled = busy;
+  }
+}
 
+// 选目录是异步的，activeController 还来不及挂上；用这个标记挡住连点开出的第二条下载
+let downloadStarting = false;
+
+/** 把分享里的文件渲染成「文件夹 + 文件」行，每行右侧一个下载按钮 */
+function renderFileRows(files, onDownload) {
   const list = $('file-list');
   list.replaceChildren();
-  for (const file of share.files) {
+
+  for (const row of buildFileRows(files)) {
     const li = document.createElement('li');
+    li.className = row.type === 'folder' ? 'is-folder' : 'is-file';
+    li.style.setProperty('--depth', String(row.depth));
+
     // Drag Handle Illusion：悬停时左侧 ⋮⋮ 淡入（仅装饰，不进无障碍树）
     const handle = document.createElement('span');
     handle.className = 'drag-handle';
     handle.setAttribute('aria-hidden', 'true');
     handle.textContent = '⋮⋮';
+
     const name = document.createElement('span');
     name.className = 'name';
-    name.textContent = file.relPath;
+    name.textContent = row.name;
+
     const size = document.createElement('span');
     size.className = 'size';
-    size.textContent = formatBytes(file.size);
-    li.append(handle, name, size);
+    size.textContent = row.type === 'folder' ? `${row.count} 个文件` : formatBytes(row.size);
+
+    const download = document.createElement('button');
+    download.type = 'button';
+    download.className = 'tiny row-download';
+    download.textContent = '下载';
+    download.setAttribute('aria-label', `下载 ${row.path || row.name}`);
+    download.addEventListener('click', () => onDownload(row));
+
+    li.append(handle, name, size, download);
     list.append(li);
-  }
-
-  const useDirectory = supportsDirectoryPicker() && share.files.length > 1;
-  const saveAll = document.createElement('button');
-  saveAll.className = 'primary';
-  saveAll.textContent = useDirectory ? '选择文件夹并全部保存' : '全部下载';
-  saveAll.addEventListener('click', () => startStagedDownload({
-    indices: share.files.map((_, index) => index),
-    useDirectory,
-  }));
-  $('file-actions').append(saveAll);
-
-  for (const [idx, file] of share.files.entries()) {
-    const single = document.createElement('button');
-    single.textContent = `下载 ${file.name}`;
-    // 单文件不弹文件夹选择：浏览器不允许把「下载」这类目录本身交给网页写入，
-    // 一次普通下载交给浏览器自己落盘更顺，也省掉「选了却报错」这一脚。
-    single.addEventListener('click', () => startStagedDownload({ indices: [idx], useDirectory: false }));
-    $('file-actions').append(single);
   }
 }
 
-async function startStagedDownload({ indices, useDirectory }) {
-  if (state.activeController) {
+function renderDownloadAll(label, onClick) {
+  const actions = $('file-actions');
+  actions.replaceChildren();
+  const all = document.createElement('button');
+  all.className = 'primary';
+  all.textContent = label;
+  all.addEventListener('click', onClick);
+  actions.append(all);
+  return all;
+}
+
+// ------------------------------- 文件：暂存 -------------------------------
+
+function renderFilesStaged() {
+  const share = state.share;
+  $('file-panel').hidden = false;
+
+  renderFileRows(share.files, (row) => {
+    if (row.type === 'folder') {
+      downloadStaged(row.indices, { basePath: row.path, wantsDirectory: true });
+    } else {
+      downloadStaged([row.idx], { basePath: '', wantsDirectory: false });
+    }
+  });
+
+  renderDownloadAll('下载全部', () => downloadStaged(
+    share.files.map((_, index) => index),
+    { basePath: '', wantsDirectory: hasFolders(share.files) },
+  ));
+}
+
+/**
+ * 暂存取件：选中什么就下什么。
+ * 只有内容含文件夹（要保留目录结构）时才让用户选目标文件夹；
+ * 纯文件直接交给浏览器下载，避免为一次普通下载弹出选择框。
+ */
+async function downloadStaged(indices, { basePath = '', wantsDirectory = false }) {
+  if (state.activeController || downloadStarting) {
     notice('已有下载任务在进行，请先停止。', 'warn');
     return;
   }
@@ -384,38 +421,50 @@ async function startStagedDownload({ indices, useDirectory }) {
   const files = indices.map((index) => share.files[index]).filter(Boolean);
   if (files.length === 0) return;
 
-  let directory = null;
-  if (useDirectory) {
-    try {
-      directory = await pickDirectory();
-    } catch {
-      directory = null;
-    }
-  }
+  downloadStarting = true;
+  setDownloadsBusy(true);
 
-  const progress = $('progress');
-  const transferText = $('transfer-text');
-  $('transfer').hidden = false;
-  progress.value = 0;
-  setTransferStatus('');
-
-  const downloader = createStagedDownloader({
-    share,
-    token: state.token,
-    files,
-    directoryHandle: directory,
-    progress,
-    transferText,
-    controls: state.controls,
-    onStatus: setTransferStatus,
-    onNotice: notice,
-  });
-
-  state.activeController = downloader;
+  let directoryHandle = null;
   try {
-    await downloader.start();
+    if (wantsDirectory) {
+      try {
+        directoryHandle = await pickDirectory();
+      } catch {
+        notice('未选择文件夹，文件将保存至浏览器下载目录。', 'warn');
+      }
+    }
+    if (!directoryHandle && files.length > 1) {
+      notice('将逐个保存到浏览器下载目录；若浏览器询问是否允许下载多个文件，请选择允许。', '');
+    }
+
+    const progress = $('progress');
+    const transferText = $('transfer-text');
+    $('transfer').hidden = false;
+    progress.value = 0;
+    setTransferStatus('');
+
+    const downloader = createStagedDownloader({
+      share,
+      token: state.token,
+      files,
+      directoryHandle,
+      basePath,
+      progress,
+      transferText,
+      controls: state.controls,
+      onStatus: setTransferStatus,
+      onNotice: notice,
+    });
+
+    state.activeController = downloader;
+    try {
+      await downloader.start();
+    } finally {
+      state.activeController = null;
+    }
   } finally {
-    state.activeController = null;
+    downloadStarting = false;
+    setDownloadsBusy(false);
   }
 }
 
@@ -432,53 +481,56 @@ function renderFilesP2P() {
   const share = state.share;
   $('file-panel').hidden = false;
 
-  const list = $('file-list');
-  list.replaceChildren();
-  for (const file of share.files) {
-    const li = document.createElement('li');
-    // Drag Handle Illusion：悬停时左侧 ⋮⋮ 淡入（仅装饰，不进无障碍树）
-    const handle = document.createElement('span');
-    handle.className = 'drag-handle';
-    handle.setAttribute('aria-hidden', 'true');
-    handle.textContent = '⋮⋮';
-    const name = document.createElement('span');
-    name.className = 'name';
-    name.textContent = file.relPath;
-    const size = document.createElement('span');
-    size.className = 'size';
-    size.textContent = formatBytes(file.size);
-    li.append(handle, name, size);
-    list.append(li);
-  }
-
-  const actions = $('file-actions');
-  actions.replaceChildren();
-
-  // 与暂存模式保持一致：只有多文件才需要选目录保留相对路径，单文件直接走浏览器下载
-  const useDirectory = supportsDirectoryPicker() && share.files.length > 1;
-  const start = document.createElement('button');
-  start.className = 'primary';
-  start.textContent = useDirectory ? '选择文件夹并开始接收' : '开始接收';
-  start.addEventListener('click', async () => {
-    start.disabled = true;
-    start.textContent = '正在连接发送方…';
-    if (useDirectory) {
-      try {
-        await pickDirectory();
-      } catch {
-        notice('未选择文件夹，文件将保存至浏览器下载目录。', 'warn');
-      }
+  renderFileRows(share.files, (row) => {
+    if (row.type === 'folder') {
+      startP2PDownload({ indices: row.indices, basePath: row.path, wantsDirectory: true });
+    } else {
+      startP2PDownload({ indices: [row.idx], basePath: '', wantsDirectory: false });
     }
-    startFileReceiver();
   });
-  actions.append(start);
-  state.receiveButton = start;
+
+  renderDownloadAll('下载全部', () => startP2PDownload({
+    indices: share.files.map((_, index) => index),
+    basePath: '',
+    wantsDirectory: hasFolders(share.files),
+  }));
 }
 
-function startFileReceiver() {
+function startP2PDownload(options) {
+  if (state.activeController) {
+    notice('已有下载任务在进行，请先停止。', 'warn');
+    return;
+  }
+  // 不 await：选择目录要用掉这次点击的用户手势，由 startFileReceiver 自己收尾
+  startFileReceiver(options);
+}
+
+async function startFileReceiver({ indices, basePath = '', wantsDirectory = false } = {}) {
   const share = state.share;
-  // 单文件没有目录结构要保留，也就不该把文件写进之前选的目录，统一走浏览器下载
-  const useDirectory = share.files.length > 1 && Boolean(state.directoryHandle);
+
+  const wanted = [...new Set(indices)]
+    .filter((index) => Number.isInteger(index) && index >= 0 && index < share.files.length)
+    .sort((a, b) => a - b);
+  if (wanted.length === 0) return;
+  if (downloadStarting) return;
+  downloadStarting = true;
+  const wantedSet = new Set(wanted);
+  const wantedFiles = wanted.map((index) => share.files[index]);
+  const totalBytes = wantedFiles.reduce((sum, file) => sum + file.size, 0);
+
+  // 只有需要保留目录结构（命中文件夹）时才选目标文件夹；纯文件直接交给浏览器下载
+  let directoryHandle = null;
+  if (wantsDirectory) {
+    try {
+      directoryHandle = await pickDirectory();
+    } catch {
+      notice('未选择文件夹，文件将保存至浏览器下载目录。', 'warn');
+    }
+  }
+  const useDirectory = Boolean(directoryHandle);
+
+  setDownloadsBusy(true);
+
   const progress = $('progress');
   const transferText = $('transfer-text');
 
@@ -486,6 +538,10 @@ function startFileReceiver() {
   progress.value = 0;
   transferText.textContent = '正在连接发送方…';
   setTransferStatus('');
+
+  if (!useDirectory && wanted.length > 1) {
+    notice('将逐个保存到浏览器下载目录；若浏览器询问是否允许下载多个文件，请选择允许。', '');
+  }
 
   let finished = false;
   let stopped = false;
@@ -505,7 +561,6 @@ function startFileReceiver() {
 
   state.finished = false;
 
-  const totalBytes = share.files.reduce((sum, file) => sum + file.size, 0);
   const startedAt = Date.now();
 
   const wakePause = () => {
@@ -521,10 +576,28 @@ function startFileReceiver() {
     }
   };
 
-  function setReceiverAction(text) {
-    if (!state.receiveButton) return;
-    state.receiveButton.disabled = true;
-    state.receiveButton.textContent = text;
+  // 告诉发送方本轮只要哪几个文件（发送方会先问一次，连接就绪时也主动补发）
+  const sendSelect = () => {
+    try {
+      signaling.send({ k: 'control', action: 'select', indices: wanted });
+    } catch {
+      // 对端可能已断开
+    }
+  };
+
+  // 每轮结束都断开本轮连接，收发双方都回到「等待下一次下载」状态
+  function teardownRound() {
+    state.activeController = null;
+    state.signaling = null;
+    downloadStarting = false;
+    try {
+      signaling.close();
+    } catch {
+      // 忽略关闭失败
+    }
+    state.rtc?.close();
+    state.rtc = null;
+    setDownloadsBusy(false);
   }
 
   function showProgress(sent) {
@@ -537,11 +610,10 @@ function startFileReceiver() {
     finished = true;
     state.finished = true;
     progress.value = 100;
-    transferText.textContent = `全部 ${share.files.length} 个文件已接收`;
-    setReceiverAction('接收完成');
+    transferText.textContent = `${wanted.length} 个文件已接收`;
     state.controls.setState(CONTROL.DONE);
-    setTransferStatus('接收完成。', 'ok');
-    notice('接收完成。', 'ok');
+    setTransferStatus('本轮下载完成，可继续选择其他文件。', 'ok');
+    teardownRound();
   }
 
   function failReceive(message) {
@@ -549,9 +621,9 @@ function startFileReceiver() {
     finished = true;
     state.finished = true;
     transferText.textContent = message;
-    setReceiverAction('接收失败');
     state.controls.setState(CONTROL.ERROR);
     setTransferStatus(message, 'danger');
+    teardownRound();
   }
 
   const throwIfStopped = () => {
@@ -589,22 +661,19 @@ function startFileReceiver() {
     }
   }
 
-  function stopReceiver(notify = true) {
+  function stopReceiver() {
     if (stopped || finished) return;
-    if (notify) sendControl('stop');
     stopped = true;
     finished = true;
     state.finished = true;
     paused = false;
     wakePause();
     relayAbort?.abort();
-    state.rtc?.close();
-    state.rtc = null;
-    signaling.close();
     state.controls.setState(CONTROL.STOPPED);
-    setReceiverAction('已停止');
-    setTransferStatus('已停止接收，未完成的文件已清理。', 'warn');
+    setTransferStatus('已停止本次下载，可继续选择其他文件。', 'warn');
     cleanupCurrentSink().catch(() => {});
+    // 不向发送方发 stop：直连可以连续下载多个文件，按“本轮结束”处理即可
+    teardownRound();
   }
 
   async function pauseReceive() {
@@ -635,6 +704,10 @@ function startFileReceiver() {
 
   function handleControl(payload) {
     if (!payload || finished || stopped) return;
+    if (payload.action === 'ask') {
+      sendSelect();
+      return;
+    }
     if (payload.action === 'pause') {
       paused = true;
       relayAbort?.abort();
@@ -650,7 +723,7 @@ function startFileReceiver() {
       return;
     }
     if (payload.action === 'stop') {
-      stopReceiver(false);
+      stopReceiver();
     }
   }
 
@@ -663,13 +736,11 @@ function startFileReceiver() {
         if (finished || stopped || transferStarted) return;
         if (role === 'sender' || role === 'upload') {
           transferText.textContent = '发送方已连接，正在建立传输…';
-          setReceiverAction('正在建立传输…');
         }
       },
       onPeerLeft: () => {
         if (!finished && !stopped) {
           transferText.textContent = '发送方离开了，请让他重新打开分享页面。';
-          setReceiverAction('发送方已离开');
         }
       },
       onPayload: (payload) => {
@@ -688,7 +759,7 @@ function startFileReceiver() {
   state.activeController = {
     pause: pauseReceive,
     resume: resumeReceive,
-    stop: () => stopReceiver(true),
+    stop: () => stopReceiver(),
   };
 
   async function handlePayload(payload) {
@@ -737,7 +808,6 @@ function startFileReceiver() {
           transferStarted = true;
           state.controls.setState(CONTROL.RUNNING, { allowPause: true });
           transferText.textContent = '已直接连接，正在接收…';
-          setReceiverAction('正在接收…');
           notice('已连接发送方，正在直接接收。', 'ok');
         },
         onData: (data) => {
@@ -768,6 +838,7 @@ function startFileReceiver() {
         return;
       }
       if (message.k === 'file') {
+        if (!wantedSet.has(message.idx)) return;
         const file = share.files[message.idx];
         if (!file) return;
         currentIdx = message.idx;
@@ -776,6 +847,7 @@ function startFileReceiver() {
         currentSink = await makeSink(message.idx, currentFile);
         transferText.textContent = `正在接收 ${currentFile.relPath}…`;
       } else if (message.k === 'end') {
+        if (!wantedSet.has(message.idx)) return;
         // 先摘下当前文件的引用，避免关闭旧 sink 的异步过程被下一个文件打断。
         const sink = currentSink;
         const file = currentFile;
@@ -783,8 +855,8 @@ function startFileReceiver() {
         currentFile = null;
         await finishSink(message.idx, file, sink);
         completedFiles += 1;
-        // 直连没有额外的结束信号，按收到的文件数判断整次接收是否完成。
-        if (completedFiles >= share.files.length) finishReceive();
+        // 直连没有额外的结束信号，按本轮要接收的文件数判断是否完成
+        if (completedFiles >= wanted.length) finishReceive();
       }
       return;
     }
@@ -799,7 +871,10 @@ function startFileReceiver() {
   async function makeSink(idx, file) {
     if (useDirectory) {
       try {
-        return await createFileSystemSink({ directoryHandle: state.directoryHandle, relativePath: file.relPath });
+        return await createFileSystemSink({
+          directoryHandle,
+          relativePath: stripBase(file.relPath, basePath),
+        });
       } catch {
         notice('写入所选文件夹失败，文件将保存至浏览器下载目录。', 'warn');
       }
@@ -824,8 +899,8 @@ function startFileReceiver() {
     if (useDirectory) {
       try {
         return await createFileSystemSink({
-          directoryHandle: state.directoryHandle,
-          relativePath: file.relPath,
+          directoryHandle,
+          relativePath: stripBase(file.relPath, basePath),
         });
       } catch {
         notice('写入所选文件夹失败，文件将保存至浏览器下载目录。', 'warn');
@@ -841,9 +916,9 @@ function startFileReceiver() {
     receivedBytes = 0;
     completedFiles = 0;
     state.controls.setState(CONTROL.RUNNING, { allowPause: true });
-    setReceiverAction('正在接收…');
+    transferText.textContent = '正在接收…';
 
-    for (let idx = 0; idx < share.files.length; idx += 1) {
+    for (const idx of wanted) {
       const file = share.files[idx];
       let done = false;
       let retries = 0;
@@ -907,13 +982,13 @@ function startFileReceiver() {
 
   signaling.ready
     .then(({ peers }) => {
+      // 无论发送方在不在，都先报一次本轮要哪几个文件；发送方连接后也会再问一次
+      sendSelect();
       if (finished || stopped || transferStarted) return;
       if (peers.some((role) => role === 'sender' || role === 'upload')) {
         transferText.textContent = '发送方已连接，正在建立传输…';
-        setReceiverAction('正在建立传输…');
       } else {
         transferText.textContent = '正在等待发送方打开页面…';
-        setReceiverAction('等待发送方…');
       }
     })
     .catch(() => {
