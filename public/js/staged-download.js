@@ -6,10 +6,7 @@
  */
 
 import { describeProgress } from './format.js';
-import {
-  createFileSystemSink, createMemorySink, saveBlob,
-} from './transport.js';
-import { stripBase } from './file-tree.js';
+import { createMemorySink, saveBlob } from './transport.js';
 import { CONTROL } from './transfer-control.js';
 
 const RETRY_LIMIT = 3;
@@ -17,7 +14,7 @@ const RETRY_LIMIT = 3;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export function createStagedDownloader({
-  share, token, files, directoryHandle, basePath = '', progress, transferText, controls, onStatus, onNotice,
+  share, token, files, progress, transferText, controls, onStatus, onNotice,
 }) {
   const total = files.reduce((sum, item) => sum + item.size, 0);
 
@@ -59,11 +56,8 @@ export function createStagedDownloader({
     }
   };
 
-  // 暂停/重试时内存模式必须保留已收数据，FSA 模式则关闭写入流把数据刷到磁盘
-  const closeForInterruption = async () => {
-    if (sink?.kind === 'memory') return;
-    await closeSink();
-  };
+  // 单文件下载一律走内存 sink：暂停/重试时保留已收数据，继续时用 Range 接着写
+  const closeForInterruption = async () => {};
 
   const cleanupSink = async () => {
     const old = sink;
@@ -77,8 +71,8 @@ export function createStagedDownloader({
   };
 
   /**
-   * 打开目标文件的写入流。offset>0 时要求保留已有部分；
-   * 浏览器无法续写时退化为从头下载（会提示一次）。
+   * 单文件下载的写入端：offset>0 时内存里必须已有对应数据；
+   * 找不到就退化为从头下载（fetchFile 会把 offset 归零后重试）。
    */
   async function ensureSink(item, offset) {
     if (sink?.kind === 'memory') {
@@ -93,45 +87,8 @@ export function createStagedDownloader({
     }
 
     await closeSink();
-
-    if (offset > 0) {
-      if (!directoryHandle) {
-        const error = new Error('缺少未完成的本地文件');
-        error.code = 'need_restart';
-        throw error;
-      }
-      try {
-        sink = await createFileSystemSink({
-          directoryHandle,
-          relativePath: stripBase(item.relPath, basePath),
-          offset,
-        });
-        return offset;
-      } catch {
-        onNotice?.('当前浏览器无法从断点续写，正在重新下载该文件。', 'warn');
-        const error = new Error('无法从断点续写');
-        error.code = 'need_restart';
-        throw error;
-      }
-    }
-
-    if (!directoryHandle) {
-      sink = createMemorySink();
-      return 0;
-    }
-
-    try {
-      sink = await createFileSystemSink({
-        directoryHandle,
-        relativePath: stripBase(item.relPath, basePath),
-        offset: 0,
-      });
-      return 0;
-    } catch {
-      onNotice?.('写入所选文件夹失败，文件将保存到浏览器下载目录。', 'warn');
-      sink = createMemorySink();
-      return 0;
-    }
+    sink = createMemorySink();
+    return 0;
   }
 
   async function fetchFile(item) {

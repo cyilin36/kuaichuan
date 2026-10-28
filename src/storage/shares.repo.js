@@ -152,9 +152,16 @@ export function countShares(db) {
   return Number(row?.n ?? 0);
 }
 
+/** 一次取件计 count 次（压缩包整包下载时 count = 包内文件数） */
+export function incrementDownloadsBy(db, id, count = 1) {
+  const n = Math.max(0, Math.floor(Number(count) || 0));
+  if (n === 0) return 0;
+  return db.prepare('UPDATE shares SET downloads = downloads + ?, last_access_at = ? WHERE id = ?')
+    .run(n, Date.now(), id).changes;
+}
+
 export function incrementDownloads(db, id) {
-  db.prepare('UPDATE shares SET downloads = downloads + 1, last_access_at = ? WHERE id = ?')
-    .run(Date.now(), id);
+  return incrementDownloadsBy(db, id, 1);
 }
 
 export function touchAccess(db, id, at = Date.now()) {

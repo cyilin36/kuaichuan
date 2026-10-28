@@ -15,9 +15,6 @@ const LOW_WATER = 1 * 1024 * 1024;
 const ICE_TIMEOUT_MS = 8000;
 const CHANNEL_TIMEOUT_MS = 12_000;
 
-export function supportsDirectoryPicker() {
-  return typeof window.showDirectoryPicker === 'function';
-}
 
 // --------------------------------------------------------------------------
 // 信令
@@ -361,6 +358,23 @@ export function createMemorySink() {
       chunks.push(copy);
       size += copy.byteLength;
     },
+    async truncate(offset) {
+      const target = Math.max(0, Math.min(Number(offset) || 0, size));
+      let remain = target;
+      const next = [];
+      for (const chunk of chunks) {
+        if (remain <= 0) break;
+        if (chunk.byteLength <= remain) {
+          next.push(chunk);
+          remain -= chunk.byteLength;
+        } else {
+          next.push(chunk.slice(0, remain));
+          remain = 0;
+        }
+      }
+      chunks = next;
+      size = target;
+    },
     async close() {},
     async cleanup() {
       chunks = [];
@@ -383,56 +397,14 @@ export function createMemorySink() {
   return sink;
 }
 
-/**
- * 写入选中的目录。
- * - offset>0 时保留已有部分并 seek 到断点，用于暂停/中断后继续
- * - cleanup() 只在「这个文件是本次新建」时删除，避免误删用户原有文件
- */
-export async function createFileSystemSink({ directoryHandle, relativePath, offset = 0 }) {
-  const parts = String(relativePath).split('/').filter(Boolean);
-  const fileName = parts.pop() ?? 'file';
-  let directory = directoryHandle;
-  for (const part of parts) {
-    directory = await directory.getDirectoryHandle(part, { create: true });
-  }
-
-  let existed = true;
-  try {
-    await directory.getFileHandle(fileName);
-  } catch {
-    existed = false;
-  }
-  if (offset > 0 && !existed) {
-    const error = new Error('找不到未完成的文件，无法续写');
-    error.code = 'missing_partial';
-    throw error;
-  }
-
-  const fileHandle = await directory.getFileHandle(fileName, { create: true });
-  const writable = await fileHandle.createWritable({ keepExistingData: offset > 0 });
-
-  if (offset > 0) {
-    try {
-      if (typeof writable.truncate !== 'function' || typeof writable.seek !== 'function') {
-        throw new Error('浏览器不支持断点写入');
-      }
-      await writable.truncate(offset);
-      await writable.seek(offset);
-    } catch (err) {
-      await writable.close().catch(() => {});
-      const error = new Error('当前浏览器不支持从断点续写，将重新下载该文件');
-      error.code = 'no_seek';
-      error.cause = err;
-      throw error;
-    }
-  }
-
-  let position = offset;
+/** 把用户选定的文件句柄包成顺序写入 sink（ZIP 打包用；支持回退） */
+export async function createFileSink(fileHandle) {
+  const writable = await fileHandle.createWritable();
+  let position = 0;
   let closed = false;
+
   return {
     kind: 'fs',
-    existed,
-    fileName,
     get offset() {
       return position;
     },
@@ -441,6 +413,15 @@ export async function createFileSystemSink({ directoryHandle, relativePath, offs
       await writable.write(value);
       position += length;
     },
+    async truncate(offset) {
+      const target = Math.max(0, Number(offset) || 0);
+      if (typeof writable.truncate !== 'function' || typeof writable.seek !== 'function') {
+        throw new Error('当前浏览器不支持回退写入');
+      }
+      await writable.truncate(target);
+      await writable.seek(target);
+      position = target;
+    },
     async close() {
       if (closed) return;
       closed = true;
@@ -448,7 +429,62 @@ export async function createFileSystemSink({ directoryHandle, relativePath, offs
     },
     async cleanup() {
       await this.close().catch(() => {});
-      if (!existed) await directory.removeEntry(fileName).catch(() => {});
+    },
+  };
+}
+
+const MEMORY_ARCHIVE_WARN_BYTES = 512 * 1024 * 1024;
+
+/**
+ * 打开压缩包的保存目标：
+ *   - 安全上下文且支持 showSaveFilePicker：让用户选位置，边打包边写盘；
+ *   - 否则退回内存 Blob（Firefox/Safari/HTTP 局域网），大包给一次提示。
+ *
+ * 返回 { kind, sink, save(), discard() }；sink 直接喂给 createZipWriter。
+ */
+export async function openArchiveTarget({ name, totalBytes = 0, onNotice } = {}) {
+  const canPick = typeof window.showSaveFilePicker === 'function' && window.isSecureContext === true;
+
+  if (canPick) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: name,
+        types: [{ description: 'ZIP 压缩包', accept: { 'application/zip': ['.zip'] } }],
+      });
+      const sink = await createFileSink(handle);
+      return {
+        kind: 'fs',
+        sink,
+        async save() {
+          await sink.close();
+        },
+        async discard() {
+          await sink.close().catch(() => {});
+        },
+      };
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        const cancelled = new Error('已取消保存');
+        cancelled.code = 'cancelled';
+        throw cancelled;
+      }
+      onNotice?.('无法使用系统保存位置，改为在浏览器中打包。', 'warn');
+    }
+  }
+
+  if (Number(totalBytes) > MEMORY_ARCHIVE_WARN_BYTES) {
+    onNotice?.('当前浏览器需要在内存中打包，文件较大时可能失败；可分批下载或改用支持保存位置的环境。', 'warn');
+  }
+
+  const sink = createMemorySink();
+  return {
+    kind: 'memory',
+    sink,
+    async save() {
+      saveBlob(sink.toBlob('application/zip'), name);
+    },
+    async discard() {
+      await sink.cleanup();
     },
   };
 }

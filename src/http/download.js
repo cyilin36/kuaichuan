@@ -3,6 +3,44 @@
  * 独立出来是为了能单测——这里最容易写出边界 bug。
  */
 
+import { badRequest } from '../errors.js';
+
+const MAX_ARCHIVE_ENTRIES = 500;
+
+/**
+ * 解析打包下载的 idx 列表：`0,2,3`。
+ * 与单文件下载不同，这里不允许静默跳过坏序号——用户看到的压缩包必须和请求一致。
+ *
+ * @param {string|null} raw
+ * @param {number} maxIndexExclusive 允许的最大序号 + 1（焚毁后序号可能有空洞，不能直接用文件个数）
+ * @returns {number[]} 去重、升序的序号
+ */
+export function parseIndexList(raw, maxIndexExclusive) {
+  const total = Number(maxIndexExclusive);
+  if (!Number.isSafeInteger(total) || total < 0) throw badRequest('文件序号范围非法');
+  if (typeof raw !== 'string' || raw.trim() === '') throw badRequest('请指定要打包的文件');
+
+  const parts = raw.split(',');
+  if (parts.length > MAX_ARCHIVE_ENTRIES) {
+    throw badRequest(`一次最多打包 ${MAX_ARCHIVE_ENTRIES} 个文件`);
+  }
+
+  const seen = new Set();
+  const list = [];
+  for (const part of parts) {
+    const text = part.trim();
+    if (!/^\d{1,6}$/.test(text)) throw badRequest('文件序号非法');
+    const idx = Number(text);
+    if (idx >= total) throw badRequest('文件序号超出范围');
+    if (seen.has(idx)) continue;
+    seen.add(idx);
+    list.push(idx);
+  }
+  if (list.length === 0) throw badRequest('请指定要打包的文件');
+  list.sort((a, b) => a - b);
+  return list;
+}
+
 /**
  * 解析 Range 头。
  * @returns {null | { start: number, end: number } | { unsatisfiable: true }}
