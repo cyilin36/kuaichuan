@@ -21,3 +21,6 @@ scripts/verify.mjs
 # ---- 本地临时目录与 Skill CLI 运行状态：不入库 ----
 .tmp/
 .kuaichuan/
+
+# ---- DSH 本地 Skill 安装目录（不入库）----
+.dsh/
