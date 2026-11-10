@@ -66,6 +66,22 @@ export function createRouter() {
 }
 
 /**
+ * 判定请求的对外协议。
+ *
+ * 反向代理终止 TLS 时，到达应用的 socket 是明文的；此时按 `X-Forwarded-Proto`
+ * 还原用户浏览器实际访问的协议，否则 AI 接口生成的分享链接会被拼成 http
+ * （HTTPS 站点上打不开）。只认 `https`，其余值一律按 socket 是否加密判断；
+ * 该结果只用于拼接返回给调用方的链接，不参与鉴权。
+ */
+function requestScheme(req) {
+  if (req.socket?.encrypted === true) return 'https';
+  const raw = req.headers?.['x-forwarded-proto'];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const proto = typeof value === 'string' ? value.split(',')[0].trim().toLowerCase() : '';
+  return proto === 'https' ? 'https' : 'http';
+}
+
+/**
  * 组装 HTTP 应用：API 路由优先，其次静态资源，最后 404。
  *
  * @param {{ config: object, logger: object, services?: object }} deps
@@ -79,7 +95,7 @@ export function createApp({ config, logger, services = {} }) {
     let pathname = '/';
     try {
       // 用真实的 Host 构造 URL：分享链接要按访问地址生成，不能用占位主机名
-      const scheme = req.socket?.encrypted ? 'https' : 'http';
+      const scheme = requestScheme(req);
       let url;
       try {
         url = new URL(req.url ?? '/', `${scheme}://${req.headers.host ?? 'localhost'}`);
@@ -116,4 +132,4 @@ export function createApp({ config, logger, services = {} }) {
   return { handler, router };
 }
 
-export { splitPattern, matchSegments };
+export { splitPattern, matchSegments, requestScheme };
