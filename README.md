@@ -46,6 +46,10 @@ pnpm start
 
 启用密码保护时，密码只在创建分享时显示一次，请及时记录。已创建的分享可在 `/manage` 页面查看和作废。
 
+## 给 AI 用
+
+服务内置 AI Agent 接口与配套 Skill：AI 可以直接把文件或文字分享给你（给出链接和密码），也能接收你发给它的分享链接。启动后访问 `<你的地址>/llms.txt` 查看接入方式，或从 `<你的地址>/skill.md` 安装 Skill；仓库内也有一份 [skills/kuaichuan](skills/kuaichuan/)。需要限制调用方时，在 `.env` 里设置 `AGENT_API_KEYS`。
+
 ## 配置
 
 端口、有效期、容量等配置见 [.env.example](.env.example)。原生部署修改 `.env`，Docker 部署修改 `docker-compose.yml` 中的 `environment`。

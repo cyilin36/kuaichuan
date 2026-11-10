@@ -17,3 +17,7 @@ PLAN.md
 test/
 scripts/smoke.mjs
 scripts/verify.mjs
+
+# ---- 本地临时目录与 Skill CLI 运行状态：不入库 ----
+.tmp/
+.kuaichuan/

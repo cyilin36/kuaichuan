@@ -9,6 +9,8 @@ import { registerStagedRoutes } from './staged.js';
 import { registerTextRoutes } from './text.js';
 import { registerRelayRoutes } from './relay.js';
 import { registerRtcRoutes } from './rtc.js';
+import { registerAgentRoutes } from './agent.js';
+import { registerAgentDocsRoutes } from './agent-docs.js';
 
 export function registerRoutes(router, deps) {
   registerHealthRoutes(router, deps);
@@ -18,4 +20,6 @@ export function registerRoutes(router, deps) {
   registerTextRoutes(router, deps);
   registerRelayRoutes(router, deps);
   registerRtcRoutes(router, deps);
+  registerAgentRoutes(router, deps);
+  registerAgentDocsRoutes(router, deps);
 }

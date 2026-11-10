@@ -32,6 +32,10 @@ const DEFAULTS = {
   TOKEN_SECRET: '',
   ACCESS_TOKEN_TTL_SECONDS: '7200',
   OWNER_TOKEN_TTL_SECONDS: '2592000',
+  // AI Agent 接入（Skill / /api/agent/v1）。默认开启，与网页端一致不强制鉴权；
+  // 配置 AGENT_API_KEYS 后必须带 Bearer Key。
+  AGENT_ENABLED: '1',
+  AGENT_API_KEYS: '',
   LOG_LEVEL: 'info',
   LOG_FILE: '',
 };
@@ -127,6 +131,9 @@ export function loadConfig(env = process.env) {
     tokenSecret: readString(env, 'TOKEN_SECRET'),
     accessTokenTtlSeconds: readInt(env, 'ACCESS_TOKEN_TTL_SECONDS', { min: 60, max: 31_536_000 }),
     ownerTokenTtlSeconds: readInt(env, 'OWNER_TOKEN_TTL_SECONDS', { min: 60, max: 315_360_000 }),
+
+    agentEnabled: readBool(env, 'AGENT_ENABLED'),
+    agentApiKeys: readList(env, 'AGENT_API_KEYS'),
 
     logLevel,
     logFile: readString(env, 'LOG_FILE'),

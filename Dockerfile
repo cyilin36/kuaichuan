@@ -24,6 +24,8 @@ RUN corepack enable \
 
 COPY src ./src
 COPY public ./public
+# AI 接入的 Skill 说明页与 CLI 由 /skill.md、/skill/scripts/kuaichuan.mjs 直接读取
+COPY skills ./skills
 COPY scripts/docker-entrypoint.mjs ./scripts/docker-entrypoint.mjs
 
 # 数据目录在镜像里先建好并归 node：命名卷首次挂载会沿用这个属主。
