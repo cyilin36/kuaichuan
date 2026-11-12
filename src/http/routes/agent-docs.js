@@ -13,6 +13,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 
 import { internal } from '../../errors.js';
+import { MAX_FILES_PER_SHARE } from '../../domain/shares.js';
 import { ROOT } from '../../paths.js';
 import { sendText } from '../respond.js';
 
@@ -131,6 +132,7 @@ ${config.relayWaitSeconds} 秒，超时后重试即可。P2P 不适合「先发�
 
 - 单文件上限：暂存 ${config.maxStagedFileBytes === 0 ? '不限' : `MAX_FILE_BYTES=${config.maxStagedFileBytes} 字节`}；P2P ${config.maxP2pFileBytes === 0 ? '不限' : `${config.maxP2pFileBytes} 字节`}
 - 文字上限：${config.maxTextBytes === 0 ? '不限' : `${config.maxTextBytes} 字节`}
+- 单个分享最多 ${MAX_FILES_PER_SHARE} 个文件
 - staged 有效期：默认 ${config.defaultTtlHours} 小时，最长 ${config.maxTtlHours} 小时
 - 密码为 4 位字母数字，只在创建分享时返回一次，无法找回
 - P2P 文字/文件不落盘；staged 内容在到期或撤销后删除
