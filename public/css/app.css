@@ -753,6 +753,26 @@ button.primary:active,
   margin-left: 2px;
 }
 
+/* 创建页每行右侧的移除按钮：同样常显，文件名过长时不挤压按钮 */
+.file-list .row-remove {
+  flex: 0 0 auto;
+  margin-left: 2px;
+}
+
+/* 已选文件的汇总与清空 */
+.file-list-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.file-list-foot .field-hint {
+  margin: 0;
+}
+
 .drag-handle {
   flex: 0 0 14px;
   width: 14px;

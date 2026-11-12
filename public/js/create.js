@@ -11,6 +11,7 @@ import {
   apiJson, loadPublicConfig, saveLocalShare,
 } from './api.js';
 import { describeProgress, formatBytes } from './format.js';
+import { appendFiles } from './file-selection.js';
 import { normalizeIndices } from './file-tree.js';
 import {
   CHANNEL_TIMEOUT_MS, PATH, RtcPeer, createSignaling, postViaRelay,
@@ -74,23 +75,55 @@ function onModeChange() {
 // ---------------------------------------------------------------------------
 
 function collectFiles(input, fromDirectory) {
+  if (state.share) return;
   const picked = [...(input.files ?? [])];
+  // 先清空控件值：再次选中同一个文件时浏览器才会重新触发 change
+  input.value = '';
   if (picked.length === 0) return;
 
-  state.files = picked.map((file) => ({
-    file,
-    relPath: (fromDirectory && file.webkitRelativePath) ? file.webkitRelativePath : file.name,
-    name: file.name,
-    size: file.size,
-    mime: file.type || 'application/octet-stream',
-  }));
+  // 多次选择累加，不再覆盖上一次的结果
+  const merged = appendFiles(state.files, picked, {
+    fromDirectory,
+    maxFiles: state.config?.maxFilesPerShare,
+  });
+  state.files = merged.files;
+  renderFiles(merged);
+}
 
+function removeFile(item) {
+  if (state.share) return;
+  const index = state.files.indexOf(item);
+  state.files = state.files.filter((candidate) => candidate !== item);
+  renderFiles();
+  // 焦点跟到原位置的下一个「移除」，避免键盘操作后焦点丢回页面顶部
+  const buttons = $('file-list').querySelectorAll('.row-remove');
+  const next = buttons[Math.min(index, buttons.length - 1)];
+  if (next) next.focus();
+  else $('file-input').focus();
+}
+
+function clearFiles() {
+  if (state.share) return;
+  state.files = [];
   $('file-input').value = '';
   $('dir-input').value = '';
   renderFiles();
+  $('file-input').focus();
 }
 
-function renderFiles() {
+/**
+ * 分享已按当前列表创建，选择随之固定：
+ * P2P 会话用序号指代文件，界面再增删会让序号与接收方请求错位。
+ */
+function lockFileSelection() {
+  $('file-input').disabled = true;
+  $('dir-input').disabled = true;
+  $('file-pick-hint').hidden = true;
+  $('file-clear').hidden = true;
+  renderFiles();
+}
+
+function renderFiles(merged = null) {
   const list = $('file-list');
   list.replaceChildren();
 
@@ -109,25 +142,55 @@ function renderFiles() {
     const size = document.createElement('span');
     size.className = 'size';
     size.textContent = formatBytes(item.size);
-    li.append(handle, name, size);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'tiny row-remove';
+    remove.textContent = '移除';
+    remove.disabled = Boolean(state.share);
+    remove.setAttribute('aria-label', `移除 ${item.relPath}`);
+    remove.addEventListener('click', () => removeFile(item));
+    li.append(handle, name, size, remove);
     list.append(li);
   }
 
+  renderFileSummary(total);
+  renderSelectionNotice(merged);
+}
+
+function renderFileSummary(total) {
+  const foot = $('file-list-foot');
   const summary = $('file-summary');
+  foot.hidden = state.files.length === 0;
   if (state.files.length === 0) {
     summary.textContent = '';
+    summary.className = 'field-hint';
     return;
   }
-  summary.textContent = `已选 ${state.files.length} 个文件，合计 ${formatBytes(total)}`;
 
   const limit = fileByteLimit();
   const oversize = limit > 0 ? state.files.filter((item) => item.size > limit) : [];
+  let text = `已选 ${state.files.length} 个文件，合计 ${formatBytes(total)}`;
   if (oversize.length > 0) {
-    summary.textContent += `　⚠️ 有 ${oversize.length} 个文件超过单个文件上限 ${formatBytes(limit)}`;
-    summary.className = 'muted small danger';
-  } else {
-    summary.className = 'muted small';
+    text += `　⚠️ 有 ${oversize.length} 个文件超过单个文件上限 ${formatBytes(limit)}`;
   }
+  summary.textContent = text;
+  summary.className = oversize.length > 0 ? 'field-hint danger' : 'field-hint';
+}
+
+/** 只反馈本次选择的结果（重复跳过、自动改名、超出上限）；每次重新渲染列表时重置 */
+function renderSelectionNotice(merged) {
+  const notice = $('file-notice');
+  if (!merged) {
+    notice.textContent = '';
+    notice.className = 'field-hint';
+    return;
+  }
+  const parts = [];
+  if (merged.duplicates > 0) parts.push(`${merged.duplicates} 个文件已在列表中，未重复添加`);
+  if (merged.renamed > 0) parts.push(`${merged.renamed} 个同名文件已自动改名`);
+  if (merged.overflow > 0) parts.push(`单个分享最多 ${merged.limit} 个文件，${merged.overflow} 个未添加`);
+  notice.textContent = parts.join('；');
+  notice.className = merged.overflow > 0 ? 'field-hint warn' : 'field-hint';
 }
 
 function updateTextCount() {
@@ -201,6 +264,8 @@ async function onCreate() {
   try {
     const created = await apiJson('/api/shares', { method: 'POST', body: buildInput() });
     state.share = created;
+    // 分享已按这份列表创建，之后不再允许改动选择
+    lockFileSelection();
 
     saveLocalShare({
       id: created.id,
@@ -889,6 +954,7 @@ async function init() {
   }
   $('file-input').addEventListener('change', (event) => collectFiles(event.target, false));
   $('dir-input').addEventListener('change', (event) => collectFiles(event.target, true));
+  $('file-clear').addEventListener('click', clearFiles);
   $('text-input').addEventListener('input', updateTextCount);
   $('create-btn').addEventListener('click', onCreate);
 

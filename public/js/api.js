@@ -50,6 +50,7 @@ export async function loadPublicConfig() {
       maxP2pFileBytes: 0,
       maxStagedFileBytes: 2 * 1024 ** 3,
       maxTextBytes: 1024 * 1024,
+      maxFilesPerShare: 500,
       relayEnabled: true,
       passwordLength: 4,
     };
