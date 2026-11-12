@@ -12,7 +12,7 @@ import {
 } from './api.js';
 import { describeProgress, formatBytes } from './format.js';
 import { appendFiles } from './file-selection.js';
-import { normalizeIndices } from './file-tree.js';
+import { buildFileRows, normalizeIndices, visibleRows } from './file-tree.js';
 import {
   CHANNEL_TIMEOUT_MS, PATH, RtcPeer, createSignaling, postViaRelay,
 } from './transport.js';
@@ -25,6 +25,8 @@ const state = {
   config: null,
   kind: 'file',
   files: [],
+  // 创建页文件树里被收起的文件夹路径（仅当前页面有效）
+  collapsed: new Set(),
   share: null,
   controls: null,
   activeController: null,
@@ -105,6 +107,7 @@ function removeFile(item) {
 function clearFiles() {
   if (state.share) return;
   state.files = [];
+  state.collapsed.clear();
   $('file-input').value = '';
   $('dir-input').value = '';
   renderFiles();
@@ -129,34 +132,67 @@ function renderFiles(merged = null) {
   const list = $('file-list');
   list.replaceChildren();
 
-  let total = 0;
-  for (const item of state.files) {
-    total += item.size;
+  const total = state.files.reduce((sum, item) => sum + item.size, 0);
+  // 展示按目录树聚合（排序与缩进只影响观感，提交仍按 state.files 的顺序）
+  const itemsByPath = new Map(state.files.map((item) => [item.relPath, item]));
+  const rows = visibleRows(buildFileRows(state.files), state.collapsed);
+
+  for (const row of rows) {
     const li = document.createElement('li');
-    // Drag Handle Illusion：悬停时左侧 ⋮⋮ 淡入（仅装饰，不进无障碍树）
-    const handle = document.createElement('span');
-    handle.className = 'drag-handle';
-    handle.setAttribute('aria-hidden', 'true');
-    handle.textContent = '⋮⋮';
-    const name = document.createElement('span');
-    name.className = 'name';
-    name.textContent = item.relPath;
-    const size = document.createElement('span');
-    size.className = 'size';
-    size.textContent = formatBytes(item.size);
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'tiny row-remove';
-    remove.textContent = '移除';
-    remove.disabled = Boolean(state.share);
-    remove.setAttribute('aria-label', `移除 ${item.relPath}`);
-    remove.addEventListener('click', () => removeFile(item));
-    li.append(handle, name, size, remove);
+    li.className = row.type === 'folder' ? 'is-folder' : 'is-file';
+    li.style.setProperty('--depth', String(row.depth));
+
+    if (row.type === 'folder') {
+      const collapsed = state.collapsed.has(row.path);
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'disclosure';
+      toggle.setAttribute('aria-expanded', String(!collapsed));
+      toggle.setAttribute('aria-label', `${collapsed ? '展开' : '折叠'} ${row.path || row.name}`);
+      toggle.textContent = collapsed ? '▸' : '▾';
+      toggle.addEventListener('click', () => toggleFolder(row.path));
+
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = row.name;
+      const size = document.createElement('span');
+      size.className = 'size';
+      size.textContent = `${row.count} 个文件`;
+      li.append(toggle, name, size);
+    } else {
+      const item = itemsByPath.get(row.path);
+      if (!item) continue;
+      // Drag Handle Illusion：悬停时左侧 ⋮⋮ 淡入（仅装饰，不进无障碍树）
+      const handle = document.createElement('span');
+      handle.className = 'drag-handle';
+      handle.setAttribute('aria-hidden', 'true');
+      handle.textContent = '⋮⋮';
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = row.name;
+      const size = document.createElement('span');
+      size.className = 'size';
+      size.textContent = formatBytes(item.size);
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'tiny row-remove';
+      remove.textContent = '移除';
+      remove.disabled = Boolean(state.share);
+      remove.setAttribute('aria-label', `移除 ${item.relPath}`);
+      remove.addEventListener('click', () => removeFile(item));
+      li.append(handle, name, size, remove);
+    }
     list.append(li);
   }
 
   renderFileSummary(total);
   renderSelectionNotice(merged);
+}
+
+function toggleFolder(path) {
+  if (state.collapsed.has(path)) state.collapsed.delete(path);
+  else state.collapsed.add(path);
+  renderFiles();
 }
 
 function renderFileSummary(total) {

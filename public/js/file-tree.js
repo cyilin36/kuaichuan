@@ -1,5 +1,5 @@
 /**
- * 接收页的文件列表：把扁平的文件按相对路径整理成「文件夹行 + 文件行」。
+ * 文件列表的目录树：把扁平的文件按相对路径整理成「文件夹行 + 文件行」。
  *
  * 输出是排好序的扁平数组，depth 表示缩进层级，顺序渲染即可；
  * 文件夹行带 indices（该文件夹下所有文件的分享内序号），用于整夹下载。
@@ -121,4 +121,29 @@ export function buildFileRows(files) {
   emit(root);
 
   return rows;
+}
+
+/**
+ * 按折叠状态过滤树行：文件夹收起后，它的所有后代行都不再渲染。
+ *
+ * rows 必须是 buildFileRows 的输出（深度优先，depth 可以逐级回溯）。
+ *
+ * @param {Array} rows buildFileRows 的结果
+ * @param {Set<string>} collapsed 已收起的文件夹路径集合
+ */
+export function visibleRows(rows, collapsed = new Set()) {
+  const visible = [];
+  const ancestors = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    // 回到同一层级：把已经结束的兄弟与后代移出栈
+    while (ancestors.length > 0 && ancestors[ancestors.length - 1].depth >= row.depth) {
+      ancestors.pop();
+    }
+    if (!ancestors.some((entry) => entry.collapsed)) visible.push(row);
+    ancestors.push({
+      depth: row.depth,
+      collapsed: row.type === 'folder' && collapsed.has(row.path),
+    });
+  }
+  return visible;
 }

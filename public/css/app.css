@@ -771,6 +771,25 @@ button.primary:active,
   white-space: normal;
 }
 
+/* 文件夹行的折叠开关：与文件行左侧 ⋮⋮ 占同样宽度，保证同级文件名对齐 */
+.file-list .disclosure {
+  flex: 0 0 14px;
+  width: 14px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.file-list .disclosure:hover,
+.file-list .disclosure:active {
+  background: transparent;
+  color: var(--text);
+}
+
 /* 已选文件的汇总与清空 */
 .file-list-foot {
   display: flex;
