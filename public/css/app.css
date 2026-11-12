@@ -771,6 +771,18 @@ button.primary:active,
   white-space: normal;
 }
 
+/* 文件夹 / 文件图标：让两种行一眼可分，颜色比文件名淡 */
+.file-list .row-icon {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  color: var(--text-tertiary);
+}
+
+.file-list li.is-folder .row-icon {
+  color: var(--text-secondary);
+}
+
 /* 文件夹行的折叠开关：与文件行左侧 ⋮⋮ 占同样宽度，保证同级文件名对齐 */
 .file-list .disclosure {
   flex: 0 0 14px;

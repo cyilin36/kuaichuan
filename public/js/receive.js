@@ -14,6 +14,7 @@ import {
   openArchiveTarget, readViaRelay, saveBlob,
 } from './transport.js';
 import { buildFileRows, normalizeIndices, visibleRows } from './file-tree.js';
+import { fileIcon, folderIcon } from './icons.js';
 import { CONTROL, createTransferControls } from './transfer-control.js';
 import { createStagedDownloader } from './staged-download.js';
 import { createZipWriter, deriveArchiveLayout } from './zip.js';
@@ -380,14 +381,14 @@ function renderFileRows(files, onDownload) {
         // 重新渲染会重建下载按钮，恢复「下载中」的禁用状态
         setDownloadsBusy(Boolean(state.activeController) || downloadStarting);
       });
-      li.append(toggle, name, size, download);
+      li.append(toggle, folderIcon(), name, size, download);
     } else {
       // Drag Handle Illusion：悬停时左侧 ⋮⋮ 淡入（仅装饰，不进无障碍树）
       const handle = document.createElement('span');
       handle.className = 'drag-handle';
       handle.setAttribute('aria-hidden', 'true');
       handle.textContent = '⋮⋮';
-      li.append(handle, name, size, download);
+      li.append(handle, fileIcon(), name, size, download);
     }
 
     list.append(li);

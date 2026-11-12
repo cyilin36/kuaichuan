@@ -13,6 +13,7 @@ import {
 import { describeProgress, formatBytes } from './format.js';
 import { appendFiles } from './file-selection.js';
 import { buildFileRows, normalizeIndices, visibleRows } from './file-tree.js';
+import { fileIcon, folderIcon } from './icons.js';
 import {
   CHANNEL_TIMEOUT_MS, PATH, RtcPeer, createSignaling, postViaRelay,
 } from './transport.js';
@@ -158,7 +159,7 @@ function renderFiles(merged = null) {
       const size = document.createElement('span');
       size.className = 'size';
       size.textContent = `${row.count} 个文件`;
-      li.append(toggle, name, size);
+      li.append(toggle, folderIcon(), name, size);
     } else {
       const item = itemsByPath.get(row.path);
       if (!item) continue;
@@ -180,7 +181,7 @@ function renderFiles(merged = null) {
       remove.disabled = Boolean(state.share);
       remove.setAttribute('aria-label', `移除 ${item.relPath}`);
       remove.addEventListener('click', () => removeFile(item));
-      li.append(handle, name, size, remove);
+      li.append(handle, fileIcon(), name, size, remove);
     }
     list.append(li);
   }
