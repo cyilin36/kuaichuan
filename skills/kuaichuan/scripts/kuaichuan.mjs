@@ -825,6 +825,29 @@ async function assertRelayReady(created, origin) {
   }
 }
 
+/**
+ * 发送前按能力发现里的上限预检文件数。
+ *
+ * 超限时直接报错，不创建分享，避免留下一个注定传不完的空分享；
+ * 发现接口不可用时跳过预检，让创建接口返回同一条限制。
+ */
+async function assertFileCountWithinLimit({ origin, apiKey, count }) {
+  let limit;
+  try {
+    const { data } = await requestJson(`${origin}/api/agent/v1`, {
+      headers: withApiKey({}, apiKey),
+    });
+    limit = Number(data?.limits?.maxFilesPerShare);
+  } catch {
+    return;
+  }
+  if (!Number.isInteger(limit) || limit <= 0 || count <= limit) return;
+  throw new CliError(
+    'too_many_files',
+    `单个分享最多 ${limit} 个文件，本次有 ${count} 个；请按目录拆分成多个分享后分批发送`,
+  );
+}
+
 /** 展开 send-file 的路径参数；目录递归、保留相对路径、跳过空目录。 */
 async function expandPaths(inputs) {
   const entries = [];
@@ -1433,6 +1456,7 @@ async function commandSendFile(flags, positionals) {
 
   const localFiles = await expandPaths(positionals);
   if (localFiles.length === 0) throw new CliError('no_files', '没有找到可分享的文件（空目录会被忽略）');
+  await assertFileCountWithinLimit({ origin, apiKey, count: localFiles.length });
 
   const body = buildCreateBody({
     kind: 'file',
