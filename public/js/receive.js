@@ -13,7 +13,8 @@ import {
   CHANNEL_TIMEOUT_MS, PATH, RtcPeer, createMemorySink, createSignaling,
   openArchiveTarget, readViaRelay, saveBlob,
 } from './transport.js';
-import { buildFileRows, normalizeIndices } from './file-tree.js';
+import { buildFileRows, normalizeIndices, visibleRows } from './file-tree.js';
+import { fileIcon, folderIcon } from './icons.js';
 import { CONTROL, createTransferControls } from './transfer-control.js';
 import { createStagedDownloader } from './staged-download.js';
 import { createZipWriter, deriveArchiveLayout } from './zip.js';
@@ -32,6 +33,8 @@ const state = {
   finished: false,
   controls: null,
   activeController: null,
+  // 文件树里被收起的文件夹路径（仅当前页面有效）
+  collapsed: new Set(),
 };
 
 function setStatus(text, tone = '') {
@@ -331,7 +334,7 @@ function startTextReceiver() {
 // ------------------------------- 文件：列表与下载入口 -------------------------------
 
 function setDownloadsBusy(busy) {
-  for (const button of document.querySelectorAll('#file-list button, #file-actions button')) {
+  for (const button of document.querySelectorAll('#file-list .row-download, #file-actions button')) {
     button.disabled = busy;
   }
 }
@@ -339,21 +342,15 @@ function setDownloadsBusy(busy) {
 // 选目录是异步的，activeController 还来不及挂上；用这个标记挡住连点开出的第二条下载
 let downloadStarting = false;
 
-/** 把分享里的文件渲染成「文件夹 + 文件」行，每行右侧一个下载按钮 */
+/** 把分享里的文件渲染成「文件夹 + 文件」行；文件夹行可展开/收起，每行右侧一个下载按钮 */
 function renderFileRows(files, onDownload) {
   const list = $('file-list');
   list.replaceChildren();
 
-  for (const row of buildFileRows(files)) {
+  for (const row of visibleRows(buildFileRows(files), state.collapsed)) {
     const li = document.createElement('li');
     li.className = row.type === 'folder' ? 'is-folder' : 'is-file';
     li.style.setProperty('--depth', String(row.depth));
-
-    // Drag Handle Illusion：悬停时左侧 ⋮⋮ 淡入（仅装饰，不进无障碍树）
-    const handle = document.createElement('span');
-    handle.className = 'drag-handle';
-    handle.setAttribute('aria-hidden', 'true');
-    handle.textContent = '⋮⋮';
 
     const name = document.createElement('span');
     name.className = 'name';
@@ -370,9 +367,37 @@ function renderFileRows(files, onDownload) {
     download.setAttribute('aria-label', `下载 ${row.path || row.name}`);
     download.addEventListener('click', () => onDownload(row));
 
-    li.append(handle, name, size, download);
+    if (row.type === 'folder') {
+      const collapsed = state.collapsed.has(row.path);
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'disclosure';
+      toggle.setAttribute('aria-expanded', String(!collapsed));
+      toggle.setAttribute('aria-label', `${collapsed ? '展开' : '折叠'} ${row.path || row.name}`);
+      toggle.textContent = collapsed ? '▸' : '▾';
+      toggle.addEventListener('click', () => {
+        toggleFolder(row.path);
+        renderFileRows(files, onDownload);
+        // 重新渲染会重建下载按钮，恢复「下载中」的禁用状态
+        setDownloadsBusy(Boolean(state.activeController) || downloadStarting);
+      });
+      li.append(toggle, folderIcon(), name, size, download);
+    } else {
+      // Drag Handle Illusion：悬停时左侧 ⋮⋮ 淡入（仅装饰，不进无障碍树）
+      const handle = document.createElement('span');
+      handle.className = 'drag-handle';
+      handle.setAttribute('aria-hidden', 'true');
+      handle.textContent = '⋮⋮';
+      li.append(handle, fileIcon(), name, size, download);
+    }
+
     list.append(li);
   }
+}
+
+function toggleFolder(path) {
+  if (state.collapsed.has(path)) state.collapsed.delete(path);
+  else state.collapsed.add(path);
 }
 
 function renderDownloadAll(label, onClick) {

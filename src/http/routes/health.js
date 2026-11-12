@@ -3,6 +3,7 @@
  */
 
 import { sendJson } from '../respond.js';
+import { MAX_FILES_PER_SHARE } from '../../domain/shares.js';
 
 const startedAt = Date.now();
 
@@ -30,6 +31,7 @@ export function registerHealthRoutes(router, { config, services = {} }) {
       maxP2pFileBytes: config.maxP2pFileBytes,
       maxStagedFileBytes: config.maxStagedFileBytes,
       maxTextBytes: config.maxTextBytes,
+      maxFilesPerShare: MAX_FILES_PER_SHARE,
       relayEnabled: config.relayEnabled,
       passwordLength: 4,
     });

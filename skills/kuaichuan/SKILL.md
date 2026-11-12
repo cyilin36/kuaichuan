@@ -71,6 +71,8 @@ kuaichuan revoke "https://host/s/Ab12cd"           # 撤销分享
 成功时 stdout 只输出一个 JSON；出错时 stderr 输出一行 `{"error":"…","message":"…"}` 且退出码 1；用法错误退出码 2。
 `recv --text` 例外：正文原样写到 stdout，不加任何提示。
 
+`send-file` 创建分享前会读取服务端的 `maxFilesPerShare`（默认 500）；文件数超过上限时直接报错，不创建分享，请按目录拆分成多个分享后分批发送。
+
 ### 输出字段
 
 - `setup` → `{ ok, url, configPath, auth }`
