@@ -759,6 +759,18 @@ button.primary:active,
   margin-left: 2px;
 }
 
+/* 合并后的选择入口：文件与文件夹共用一份已选列表 */
+.pick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pick-actions .button {
+  max-width: 100%;
+  white-space: normal;
+}
+
 /* 已选文件的汇总与清空 */
 .file-list-foot {
   display: flex;

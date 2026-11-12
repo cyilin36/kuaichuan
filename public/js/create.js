@@ -116,6 +116,8 @@ function clearFiles() {
  * P2P 会话用序号指代文件，界面再增删会让序号与接收方请求错位。
  */
 function lockFileSelection() {
+  $('pick-files-btn').disabled = true;
+  $('pick-folder-btn').disabled = true;
   $('file-input').disabled = true;
   $('dir-input').disabled = true;
   $('file-pick-hint').hidden = true;
@@ -952,6 +954,9 @@ async function init() {
   for (const radio of document.querySelectorAll('input[name="mode"]')) {
     radio.addEventListener('change', onModeChange);
   }
+  // 文件与文件夹共用一个入口，两个按钮各自唤起对应的系统选择框
+  $('pick-files-btn').addEventListener('click', () => $('file-input').click());
+  $('pick-folder-btn').addEventListener('click', () => $('dir-input').click());
   $('file-input').addEventListener('change', (event) => collectFiles(event.target, false));
   $('dir-input').addEventListener('change', (event) => collectFiles(event.target, true));
   $('file-clear').addEventListener('click', clearFiles);
